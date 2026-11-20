@@ -6,11 +6,10 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      // FastAPI 개발 서버 (VITE_API_BASE_URL 미설정 시 /api 로 프록시)
+      // FastAPI 개발 서버. 백엔드 경로가 /api/v1/... 이므로 경로를 그대로 넘긴다 (VITE_API_BASE_URL 미설정 시)
       '/api': {
         target: 'http://localhost:8000',
         changeOrigin: true,
-        rewrite: (p) => p.replace(/^\/api/, ''),
       },
     },
   },

@@ -12,8 +12,8 @@ npm run dev                  # http://localhost:5173
 
 | 환경변수 | 설명 |
 | --- | --- |
-| `VITE_USE_MOCK` | `true`면 백엔드 없이 목업 데이터로 동작 |
-| `VITE_API_BASE_URL` | FastAPI 주소. 비우면 `/api` → `localhost:8000` 프록시 |
+| `VITE_USE_MOCK` | `true`면 백엔드 없이 목업 데이터로 동작 (임시, 백엔드 연동 후 제거) |
+| `VITE_API_BASE_URL` | FastAPI 서버 주소(origin)만. 예: `http://10.0.0.5:8000`. 비우면 같은 출처의 `/api/v1` → 개발 서버가 `localhost:8000`으로 프록시 |
 | `VITE_NCP_MAP_CLIENT_ID` | NCP Maps Client ID. 비우면 약도(대체 지도) 표시 |
 
 ## 화면
@@ -21,9 +21,9 @@ npm run dev                  # http://localhost:5173
 | 경로 | 화면 | 사용 API |
 | --- | --- | --- |
 | `/` | 홈: 증상 입력으로 바로 상담 시작 | - |
-| `/chat` | 대화형 문진 (슬롯 진행 상황, 5턴, 위험 신호 응급 안내, 결과·근거 문서) | `POST /chat/sessions`, `POST /chat/sessions/{id}/messages`, `GET /chat/sessions/{id}/result` |
-| `/hospitals` | 지금 문 연 병원 지도·목록 (`?dept=&lat=&lng=&radius=`) | `GET /hospitals/open` |
-| `/medication` | 약봉투 촬영 → 약 확인 → 3줄 요약·음성 안내 | `POST /medication/scan`, `POST /medication/guide` |
+| `/chat` | 대화형 문진 (서버 질문, 선택형 답변 버튼, 응급 안내, 분석 대기, 결과·참고 자료) | `POST /api/v1/chat/sessions`, `POST /api/v1/chat/sessions/{id}/messages`, `GET /api/v1/chat/sessions/{id}/result` |
+| `/hospitals` | 지금 문 연 병원 지도·목록 (`?dept=내과&dept=외과&radius_km=`, 진료과 여러 개 선택 가능, 선택 `lat`·`lng`) | `GET /api/v1/hospitals/open` |
+| `/medication` | 약봉투 촬영 → 약 확인 → 쉬운 설명·공식 정보·음성 안내 | `POST /api/v1/medications/scan`, `POST /api/v1/medications/guide` |
 
 모든 화면 하단에 "의학적 진단이 아닌 진료 안내" 문구가 고정됩니다.
 
@@ -31,12 +31,13 @@ npm run dev                  # http://localhost:5173
 
 ```
 src/
-  api/          types.ts(요청·응답 타입) · index.ts(엔드포인트) · mock.ts(목업)
-  components/   Layout · Disclaimer · EmergencyBanner · NaverMap
-  pages/        Home · Chat · Hospitals · Medication
+  api/          types.ts(요청·응답 타입) · index.ts(엔드포인트) · client.ts(envelope·오류) · mock.ts(목업)
+  components/   Layout · Disclaimer · EmergencyBanner · NaverMap · Icon
+  pages/        Home · Chat · Hospitals · Medication · NotFound
   hooks/        useGeolocation
-  utils/        hours.ts (진료시간 계산)
+  utils/        hours.ts (진료시간·거리·시각 표시)
   styles/       global.css(디자인 토큰) · pages.css
 ```
 
-API 응답 형태는 `src/api/types.ts`에 정의되어 있으니, 백엔드 스키마가 정해지면 이 파일만 맞추면 됩니다.
+API 계약의 기준은 Notion「MediNavi — Backend API Documentation」이고, 코드에서는 `src/api/types.ts`가 그것을 옮긴 것입니다.
+모든 응답은 `{ code, message, data }` 형태이며 `client.ts`가 `data`만 꺼내 줍니다. 실패하면 `ApiError`(`code`로 분기)를 던집니다.

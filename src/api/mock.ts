@@ -1,226 +1,222 @@
-// 백엔드 없이 화면을 개발하기 위한 목업. VITE_USE_MOCK=true 일 때만 사용.
-import { sleep } from './client';
+// 백엔드 없이 화면을 개발하기 위한 목업. VITE_USE_MOCK=true 일 때만 사용. 백엔드 연동 후 삭제 (PRD 10장).
+// 병원·약 정보는 모두 지어낸 예시다. 실제 의료 정보가 아니다.
+// 응답 모양은 types.ts(백엔드 API 계약)를 그대로 따른다.
+import { ApiError, sleep } from './client';
 import type {
+  ChatMessage,
   ChatResult,
-  CreateSessionRequest,
-  CreateSessionResponse,
-  DrugGuide,
-  GuideResponse,
+  ChatSession,
   Hospital,
-  HospitalListResponse,
+  HospitalList,
   HospitalQuery,
+  MedicationGuide,
+  MedicationGuideItem,
+  MedicationScan,
   OpenHours,
-  ScanResponse,
-  SendMessageResponse,
-  SlotKey,
-  Slots,
-  Weekday,
+  Question,
 } from './types';
-import { MAX_TURNS } from './types';
 
+const now = () => new Date().toISOString();
+const uuid = () => crypto.randomUUID();
+
+/* ── 문진 ── */
+
+// 서버가 내려줄 질문을 흉내 낸 고정 목록
+const QUESTIONS: Question[] = [
+  { question_id: 'q_001', text: '언제부터 불편하셨어요?', answer_type: 'SINGLE_CHOICE', options: ['오늘부터', '어제부터', '2~3일 전부터', '일주일 넘게'] },
+  { question_id: 'q_002', text: '아픈 곳이 정확히 어디인가요?', answer_type: 'TEXT', options: [] },
+  { question_id: 'q_003', text: '0부터 10 중 몇 점 정도로 아프세요?', answer_type: 'SINGLE_CHOICE', options: ['1~3점', '4~6점', '7~8점', '9~10점'] },
+  { question_id: 'q_004', text: '열이나 구토가 같이 있나요?', answer_type: 'SINGLE_CHOICE', options: ['열이 있어요', '토했어요', '둘 다 있어요', '없어요'] },
+];
+
+// 목업 전용 위험 신호 흉내. 실제 판단은 서버가 한다.
 const RED_FLAGS = ['흉통', '가슴이', '숨이', '숨쉬기', '호흡', '의식', '기절', '마비', '피를 토'];
+const EMERGENCY_GUIDANCE = '위험 신호가 감지되었습니다. 즉시 119 또는 가까운 응급실에 연락하세요.';
 
-const QUESTIONS: Record<SlotKey, string> = {
-  main_symptom: '어디가 어떻게 불편하세요?',
-  body_part: '아픈 곳이 정확히 어디인가요? 명치, 오른쪽 아래처럼 말씀해 주세요.',
-  onset: '언제부터 아프셨어요?',
-  severity: '0부터 10 중 몇 점 정도로 아프세요?',
-  accompanying: '열, 구토, 설사가 같이 있나요?',
-  region: '어느 동네 근처 병원을 찾으세요?',
-  age_history: '나이대와 앓고 계신 질환이 있나요?',
-};
-const ORDER: SlotKey[] = ['main_symptom', 'body_part', 'onset', 'severity', 'accompanying', 'region'];
+interface MockSession {
+  status: ChatMessage['status'];
+  turn: number;
+  answered: Set<string>;
+  analyzeUntil: number;
+}
+const sessions = new Map<string, MockSession>();
 
-const sessions = new Map<string, { slots: Slots; turn: number }>();
+const notFound = () =>
+  new ApiError(404, 'SESSION_NOT_FOUND', '문진 세션이 존재하지 않거나 만료되었습니다.');
 
-export async function createSession(body: CreateSessionRequest): Promise<CreateSessionResponse> {
-  await sleep(300);
-  const id = `mock-${Date.now()}`;
-  sessions.set(id, { slots: body.lat != null ? { region: '현재 위치' } : {}, turn: 0 });
-  return { session_id: id, greeting: '안녕하세요. 어디가 어떻게 불편하세요?' };
+const base = (id: string, s: MockSession) => ({
+  session_id: id,
+  status: s.status,
+  turn_count: s.turn,
+  next_question: null,
+  result_available: s.status === 'COMPLETED',
+  failure_code: null,
+  emergency_guidance: null,
+});
+
+export async function createSession(_initialSymptom: string): Promise<ChatSession> {
+  await sleep(400);
+  const id = uuid();
+  sessions.set(id, { status: 'IN_PROGRESS', turn: 0, answered: new Set(), analyzeUntil: 0 });
+  return { session_id: id, status: 'IN_PROGRESS', created_at: now(), turn_count: 0, next_question: QUESTIONS[0] };
 }
 
-export async function sendMessage(id: string, text: string): Promise<SendMessageResponse> {
+export async function sendMessage(id: string, questionId: string, message: string): Promise<ChatMessage> {
   await sleep(700);
-  const s = sessions.get(id) ?? { slots: {}, turn: 0 };
-  s.turn += 1;
-  sessions.set(id, s);
+  const s = sessions.get(id);
+  if (!s) throw notFound();
+  if (s.status === 'ANALYZING')
+    throw new ApiError(409, 'SESSION_ANALYSIS_IN_PROGRESS', '문진 분석이 진행 중입니다.');
+  if (s.status !== 'IN_PROGRESS')
+    throw new ApiError(409, 'SESSION_NOT_ACTIVE', '현재 문진 세션에서 메시지를 처리할 수 없습니다.');
 
-  if (RED_FLAGS.some((k) => text.includes(k))) {
+  if (!s.answered.has(questionId)) {
+    s.answered.add(questionId);
+    s.turn += 1;
+  }
+
+  if (RED_FLAGS.some((k) => message.includes(k))) {
+    s.status = 'EMERGENCY';
     return {
-      reply: '위험 신호일 수 있어요. 문진을 멈추고 지금 바로 119에 전화하거나 가까운 응급실로 가세요.',
-      slots: { ...s.slots },
-      turn_count: s.turn,
-      red_flag: true,
-      done: true,
+      ...base(id, s),
+      assistant_message: '위험 신호가 확인되어 문진을 중단합니다.',
+      emergency_guidance: EMERGENCY_GUIDANCE,
     };
   }
 
-  // 목업 규칙: 비어 있는 첫 슬롯에 답변을 그대로 채운다
-  const next = ORDER.find((k) => !s.slots[k]);
-  if (next) s.slots[next] = text;
-  const remaining = ORDER.find((k) => !s.slots[k]);
-  const done = !remaining || s.turn >= MAX_TURNS;
+  const next = QUESTIONS[s.turn];
+  if (next) {
+    return { ...base(id, s), assistant_message: '추가로 확인할 내용이 있어요.', next_question: next };
+  }
 
+  s.status = 'ANALYZING';
+  s.analyzeUntil = Date.now() + 3000;
   return {
-    reply: done ? '말씀해 주신 내용을 정리했어요. 아래에서 결과를 확인해 주세요.' : QUESTIONS[remaining!],
-    slots: { ...s.slots },
-    turn_count: s.turn,
-    red_flag: false,
-    done,
+    ...base(id, s),
+    assistant_message: '문진이 완료되어 결과를 분석하고 있어요.',
+    retry_after_seconds: 2,
   };
 }
 
-export async function getResult(_id: string): Promise<ChatResult> {
-  await sleep(900);
+export async function getResult(id: string): Promise<ChatResult> {
+  await sleep(300);
+  const s = sessions.get(id);
+  if (!s) throw notFound();
+  if (s.status === 'ANALYZING' && Date.now() >= s.analyzeUntil) s.status = 'COMPLETED';
+
+  if (s.status !== 'COMPLETED') {
+    return {
+      session_id: id,
+      status: s.status,
+      assessment_status: null,
+      result: null,
+      retry_after_seconds: s.status === 'ANALYZING' ? 2 : null,
+    };
+  }
   return {
-    summary: '어제부터 오른쪽 아랫배가 아픔(7점), 미열과 구토가 함께 있음',
-    diseases: [
-      { name: '충수염', reason: '오른쪽 아랫배 통증에 열과 구토가 함께 나타남' },
-      { name: '급성 위장염', reason: '구토와 복통이 갑자기 시작됨' },
-    ],
-    department: '외과',
-    region: '서울 중구',
-    lat: 37.5636,
-    lng: 126.9976,
-    evidence: [
-      {
-        doc_id: 'kdca-0412',
-        disease_name: '충수염',
-        snippet: '배꼽 주위에서 시작해 오른쪽 아랫배로 옮겨가는 통증이 특징이며, 식욕부진·구역·발열이 동반될 수 있다.',
-      },
-      {
-        doc_id: 'kdca-0187',
-        disease_name: '급성 위장염',
-        snippet: '구토, 설사, 복통이 갑자기 시작되며 대부분 수일 안에 좋아진다.',
-      },
-    ],
+    session_id: id,
+    status: 'COMPLETED',
+    assessment_status: 'ASSESSED',
+    result: {
+      suspected_diseases: [
+        { disease_name: '(예시) 질환 A', reason: '(목업) 입력한 증상 일부와 연관된 예시 설명입니다.' },
+        { disease_name: '(예시) 질환 B', reason: '(목업) 함께 검토한 예시 설명입니다.' },
+      ],
+      recommended_department: '내과',
+      reason: '(목업) 입력된 증상과 참고 정보를 비교한 예시 설명입니다.',
+      references: [{ title: '(목업) 건강정보 예시 문서', organization: '예시 기관', url: 'https://example.invalid/reference' }],
+      medical_disclaimer: '의심 질환은 확정 진단이 아니며, 증상이 지속되거나 악화되면 의료기관을 방문하세요.',
+    },
+    retry_after_seconds: null,
   };
 }
 
-const weekdays = (h: OpenHours, sat?: OpenHours, sun?: OpenHours) => {
-  const r: Partial<Record<Weekday, OpenHours>> = { mon: h, tue: h, wed: h, thu: h, fri: h };
-  if (sat) r.sat = sat;
-  if (sun) r.sun = sun;
-  return r;
-};
-const allDay: OpenHours = { start: '00:00', end: '24:00' };
+/* ── 병원 ── */
 
-const HOSPITALS: Hospital[] = [
-  {
-    hpid: 'A1',
-    name: '을지로연합외과의원',
-    departments: ['외과', '가정의학과'],
-    open_hours: weekdays({ start: '09:00', end: '19:00' }, { start: '09:00', end: '13:00' }),
-    lat: 37.5662,
-    lng: 126.9925,
-    tel: '02-000-0001',
-    address: '서울 중구 을지로 00',
-    distance_m: 420,
-  },
-  {
-    hpid: 'A2',
-    name: '명동365의원',
-    departments: ['내과', '외과'],
-    open_hours: weekdays({ start: '08:30', end: '21:00' }, { start: '09:00', end: '18:00' }, { start: '10:00', end: '16:00' }),
-    lat: 37.5609,
-    lng: 126.9858,
-    tel: '02-000-0002',
-    address: '서울 중구 명동길 00',
-    distance_m: 980,
-  },
-  {
-    hpid: 'A3',
-    name: '충무로내과외과',
-    departments: ['내과', '외과'],
-    open_hours: weekdays({ start: '09:00', end: '18:00' }),
-    lat: 37.5612,
-    lng: 126.9942,
-    tel: '02-000-0003',
-    address: '서울 중구 충무로 00',
-    distance_m: 1350,
-  },
-  {
-    hpid: 'E1',
-    name: '중앙응급의료센터',
-    departments: ['응급의학과'],
-    open_hours: { ...weekdays(allDay, allDay, allDay), hol: allDay },
-    lat: 37.5673,
-    lng: 127.0055,
-    tel: '02-000-0119',
-    address: '서울 중구 을지로 00',
-    distance_m: 1720,
-    is_emergency: true,
-  },
+const DAYS = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'] as const;
+const week = (open: string, close: string, sat?: [string, string], sun?: [string, string]): OpenHours[] =>
+  DAYS.map((d) => {
+    const t = d === 'SATURDAY' ? sat : d === 'SUNDAY' ? sun : [open, close];
+    return t
+      ? { day_of_week: d, open_time: t[0], close_time: t[1], is_closed: false }
+      : { day_of_week: d, open_time: null, close_time: null, is_closed: true };
+  });
+
+// 좌표 오프셋은 검색 중심 기준. 이름·전화·주소는 지어낸 예시.
+const HOSPITALS: (Omit<Hospital, 'latitude' | 'longitude' | 'department' | 'is_open'> & {
+  dLat: number;
+  dLng: number;
+  depts: string[];
+})[] = [
+  { hospital_id: 'mock_001', name: '(예시) 가나의원', depts: ['내과', '가정의학과'], open_hours: week('09:00', '19:00', ['09:00', '13:00']), dLat: 0.0025, dLng: -0.003, phone: '02-000-0001', address: '예시시 예시구 예시로 1', distance_km: 0.42 },
+  { hospital_id: 'mock_002', name: '(예시) 다라365의원', depts: ['내과', '외과', '이비인후과'], open_hours: week('08:30', '21:00', ['09:00', '18:00'], ['10:00', '16:00']), dLat: -0.004, dLng: -0.008, phone: '02-000-0002', address: '예시시 예시구 예시로 2', distance_km: 0.98 },
+  { hospital_id: 'mock_003', name: '(예시) 마바외과', depts: ['외과', '정형외과'], open_hours: week('09:00', '18:00'), dLat: -0.0035, dLng: 0.004, phone: null, address: '예시시 예시구 예시로 3', distance_km: 1.35 },
+  { hospital_id: 'mock_004', name: '(예시) 사아응급의료센터', depts: ['응급의학과'], open_hours: week('00:00', '24:00', ['00:00', '24:00'], ['00:00', '24:00']), dLat: 0.0075, dLng: 0.013, phone: '02-000-0119', address: '예시시 예시구 예시로 4', distance_km: 1.72 },
 ];
 
-export async function getOpenHospitals(q: HospitalQuery): Promise<HospitalListResponse> {
+export async function getOpenHospitals(q: HospitalQuery): Promise<HospitalList> {
   await sleep(500);
-  const list = q.dept
-    ? HOSPITALS.filter((h) => h.departments.includes(q.dept!) || h.is_emergency)
-    : HOSPITALS;
-  return { hospitals: list, widened: false };
+  const hospitals: Hospital[] = HOSPITALS.filter((h) => h.depts.includes(q.department) && h.distance_km <= q.radius_km).map(
+    ({ dLat, dLng, depts: _d, ...h }) => ({
+      ...h,
+      latitude: q.latitude + dLat,
+      longitude: q.longitude + dLng,
+      department: q.department,
+      is_open: true,
+    }),
+  );
+  return { as_of: now(), source_updated_at: null, total_count: hospitals.length, hospitals };
 }
 
-export async function scanMedication(_file: File): Promise<ScanResponse> {
+/* ── 복약 ── */
+
+export async function scanMedication(_file: File): Promise<MedicationScan> {
   await sleep(1200);
   return {
-    image_url: '',
-    items: [
+    scan_id: uuid(),
+    recognized_text: '(목업) 예시정A 500mg / 예시정B / 알수없는약',
+    medications: [
       {
-        ocr_text: '타이레놀정500mg',
-        candidates: [{ item_seq: '200000001', item_name: '타이레놀정500밀리그람', score: 0.97 }],
+        item_seq: 'mock_seq_1',
+        item_name: '(예시) 예시정A 500mg',
+        match_status: 'MATCHED',
+        candidates: [{ item_seq: 'mock_seq_1', item_name: '(예시) 예시정A 500mg', manufacturer: '예시제약' }],
       },
       {
-        ocr_text: '무코스타정',
+        item_seq: null,
+        item_name: '예시정B',
+        match_status: 'AMBIGUOUS',
         candidates: [
-          { item_seq: '200000002', item_name: '무코스타정(레바미피드)', score: 0.81 },
-          { item_seq: '200000003', item_name: '무코란정', score: 0.62 },
+          { item_seq: 'mock_seq_2', item_name: '(예시) 예시정B 100mg', manufacturer: '예시제약' },
+          { item_seq: 'mock_seq_3', item_name: '(예시) 예시정B 200mg', manufacturer: '샘플제약' },
         ],
       },
+      { item_seq: null, item_name: '알수없는약', match_status: 'NOT_FOUND', candidates: [] },
     ],
   };
 }
 
-const GUIDES: Record<string, DrugGuide> = {
-  '200000001': {
-    item_seq: '200000001',
-    item_name: '타이레놀정500밀리그람',
-    summary: [
-      '열을 내리고 통증을 줄여 주는 약이에요.',
-      '한 번에 1~2알, 4~6시간 간격으로 드세요.',
-      '하루 8알을 넘기지 말고, 술과 함께 드시지 마세요.',
-    ],
-    efficacy: '감기로 인한 발열 및 동통, 두통, 치통, 근육통 등',
-    usage: '만 12세 이상: 1회 1~2정씩 1일 3~4회(4~6시간 간격)',
-    caution: '매일 세 잔 이상 술을 마시는 사람은 의사·약사와 상의',
-    interaction: '다른 아세트아미노펜 함유 제품과 함께 복용하지 마세요.',
-  },
-  '200000002': {
-    item_seq: '200000002',
-    item_name: '무코스타정(레바미피드)',
-    summary: [
-      '위 점막을 보호해 주는 약이에요.',
-      '하루 세 번, 아침·저녁·자기 전에 한 알씩 드세요.',
-      '두드러기나 가려움이 생기면 복용을 멈추고 문의하세요.',
-    ],
-    efficacy: '위궤양, 급성 위염 및 만성 위염의 급성 악화기 위점막 병변 개선',
-    usage: '1회 1정, 1일 3회 아침·저녁 및 취침 전 복용',
-    caution: '임부 또는 수유부는 의사와 상의',
-    interaction: '보고된 주요 상호작용 없음',
-  },
-  '200000003': {
-    item_seq: '200000003',
-    item_name: '무코란정',
-    summary: ['(목업) 가래를 묽게 하는 약이에요.', '정해진 횟수대로 드세요.', '이상 반응이 있으면 약사와 상의하세요.'],
-    efficacy: '(목업)',
-    usage: '(목업)',
-    caution: '(목업)',
-    interaction: '(목업)',
-  },
+const guideOf = (item_seq: string, item_name: string): MedicationGuideItem => ({
+  item_seq,
+  item_name,
+  efficacy: '(목업) 공식 효능 원문 자리입니다.',
+  usage: '(목업) 공식 용법 원문 자리입니다. 실제로는 처방 지시를 따르세요.',
+  cautions: ['(목업) 공식 주의사항 원문 자리입니다.'],
+  official_source: { organization: '(목업) 예시 기관', url: null },
+  summary: '(목업) 공식 정보를 쉽게 풀어 쓴 설명이 들어갈 자리예요.',
+  audio_status: 'NOT_GENERATED',
+  audio_url: null,
+});
+
+const GUIDE_NAMES: Record<string, string> = {
+  mock_seq_1: '(예시) 예시정A 500mg',
+  mock_seq_2: '(예시) 예시정B 100mg',
+  mock_seq_3: '(예시) 예시정B 200mg',
 };
 
-export async function getGuide(itemSeqs: string[]): Promise<GuideResponse> {
+export async function getGuide(itemSeqs: string[]): Promise<MedicationGuide> {
   await sleep(1000);
-  return { guides: itemSeqs.map((s) => GUIDES[s]).filter(Boolean), tts_url: null };
+  const unknown = itemSeqs.find((s) => !GUIDE_NAMES[s]);
+  if (unknown) throw new ApiError(404, 'MEDICATION_NOT_FOUND', '요청한 의약품 정보를 찾을 수 없습니다.');
+  return { medications: itemSeqs.map((s) => guideOf(s, GUIDE_NAMES[s])) };
 }

@@ -449,12 +449,13 @@ main:focus {
   border-radius: 50%;
   background: currentColor;
 }
-.badge--er {
-  color: var(--alert);
-  background: var(--alert-wash);
+.badge--muted {
+  color: var(--ink-soft);
+  background: var(--tint);
 }
 .error {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5em;
   align-items: flex-start;
   color: var(--alert);

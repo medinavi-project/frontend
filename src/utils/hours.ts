@@ -1,29 +1,26 @@
-import type { Hospital, OpenHours, Weekday } from '../api/types';
+import type { DayOfWeek, Hospital, OpenHours } from '../api/types';
 
-const DAYS: Weekday[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+const DAYS: DayOfWeek[] = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
 
-export function todayKey(d = new Date()): Weekday {
+export function todayKey(d = new Date()): DayOfWeek {
   return DAYS[d.getDay()];
 }
 
+/** 오늘 요일의 진료시간. 정보가 없거나 휴진이면 undefined */
 export function todayHours(h: Hospital, d = new Date()): OpenHours | undefined {
-  return h.open_hours[todayKey(d)];
+  const t = h.open_hours.find((o) => o.day_of_week === todayKey(d));
+  return t && !t.is_closed ? t : undefined;
 }
 
-const toMin = (t: string) => {
-  const [hh, mm] = t.split(':').map(Number);
-  return hh * 60 + mm;
-};
-
-/** 서버에서 이미 필터링하지만, 화면에서 남은 시간을 보여 주기 위해 사용 */
-export function isOpenNow(h: Hospital, d = new Date()): boolean {
-  const hours = todayHours(h, d);
-  if (!hours) return false;
-  const now = d.getHours() * 60 + d.getMinutes();
-  return now >= toMin(hours.start) && now < toMin(hours.end);
+/** 거리 표시. 서버는 km 로 준다 */
+export function formatDistance(km?: number | null): string {
+  if (km == null) return '';
+  return km < 1 ? `${Math.round(km * 1000)}m` : `${Number(km.toFixed(1))}km`;
 }
 
-export function formatDistance(m?: number): string {
-  if (m == null) return '';
-  return m < 1000 ? `${m}m` : `${(m / 1000).toFixed(1)}km`;
+/** 시각 표시: ISO 8601 → "11월 20일 (금) 오후 5:00" */
+export function formatDateTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short', hour: 'numeric', minute: '2-digit' });
 }

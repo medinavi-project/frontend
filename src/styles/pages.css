@@ -383,37 +383,10 @@
   padding-block: 1.25rem 0.75rem;
   z-index: 5;
 }
-.scale {
+.chat__wait {
   display: grid;
-  gap: 0.35rem;
-}
-.scale__buttons {
-  display: grid;
-  grid-template-columns: repeat(11, minmax(0, 1fr));
-  gap: 4px;
-}
-.scale__buttons button {
-  min-height: 48px;
-  border: 1px solid var(--line-strong);
-  background: var(--surface);
-  border-radius: var(--radius-s);
-  font-weight: 700;
-  font-size: var(--step-0);
-  transition:
-    background 160ms var(--ease),
-    border-color 160ms var(--ease);
-}
-.scale__buttons button:hover {
-  border-color: var(--rx);
-  background: var(--rx-wash);
-}
-.scale__buttons button:nth-child(n + 8) {
-  box-shadow: inset 0 -3px 0 var(--alert);
-}
-.scale__ends {
-  display: flex;
-  justify-content: space-between;
-  font-size: var(--step--1);
+  justify-items: start;
+  gap: 0.6rem;
 }
 .chat__form {
   display: flex;
@@ -455,23 +428,6 @@
   font-size: var(--step-1);
   margin: 0;
 }
-.side__turn {
-  font-size: var(--step--1);
-  white-space: nowrap;
-}
-.progress {
-  height: 6px;
-  border-radius: var(--radius-pill);
-  background: var(--rx-wash);
-  overflow: hidden;
-}
-.progress span {
-  display: block;
-  height: 100%;
-  background: var(--rx);
-  border-radius: inherit;
-  transition: width 300ms var(--ease);
-}
 .slots {
   margin: 0;
   display: grid;
@@ -508,10 +464,6 @@
 }
 .slot.is-filled dd {
   color: var(--ink);
-  font-weight: 600;
-}
-.slot.is-asking dd {
-  color: var(--rx);
   font-weight: 600;
 }
 
@@ -595,6 +547,12 @@
 .result__evidence p {
   margin: 0.2rem 0 0;
 }
+.result__disclaimer {
+  margin: 0;
+  padding: 1rem 1.8rem 1.4rem;
+  border-top: 1px solid var(--line);
+  font-size: var(--step--1);
+}
 
 /* ── 병원 ── */
 .hospitals__head h1,
@@ -638,6 +596,13 @@
 }
 .filters__radius legend {
   margin-bottom: 0.3rem;
+}
+.filters__depts {
+  flex-wrap: wrap;
+  flex-basis: 100%;
+}
+.filters__depts span {
+  gap: 0.3em;
 }
 .filters__radius label {
   cursor: pointer;
@@ -735,10 +700,6 @@
 .map__pin:hover {
   transform: translate(-50%, calc(-50% - 2px));
 }
-.map__pin.is-er {
-  background: var(--alert);
-  color: var(--on-alert);
-}
 .map__pin.is-selected {
   background: var(--rx-deep);
   color: var(--paper);
@@ -798,9 +759,6 @@
     inset 0 0 0 1px var(--rx),
     var(--shadow-sm);
 }
-.hcard.is-er {
-  border-left: 4px solid var(--alert);
-}
 .hcard__main {
   display: grid;
   gap: 0.3rem;
@@ -831,10 +789,6 @@
   font-size: var(--step--1);
   font-weight: 700;
   vertical-align: 0.15em;
-}
-.hcard.is-er .hcard__num {
-  background: var(--alert);
-  color: var(--on-alert);
 }
 .hcard__meta {
   display: flex;
@@ -997,33 +951,35 @@
   display: grid;
   gap: var(--space-2);
 }
-.tts {
+.med__ocr summary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  cursor: pointer;
+  color: var(--rx);
+  font-weight: 600;
+}
+.med__ocr p {
+  margin: 0 0 var(--space-2);
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-s);
+  background: var(--tint);
+  white-space: pre-wrap;
+}
+.guide__tts {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
+  gap: 0.75rem;
   flex-wrap: wrap;
-  background: var(--rx);
-  color: var(--on-rx);
-  border: 0;
-  border-radius: var(--radius-m);
+  margin-bottom: var(--space-2);
 }
 .tts__label {
   display: inline-flex;
   align-items: center;
-  gap: 0.6rem;
-  font-size: var(--step-1);
+  gap: 0.5rem;
+  color: var(--rx);
 }
-.tts .btn {
-  background: var(--surface);
-  color: var(--rx-deep);
-  border-color: var(--surface);
-}
-.tts .btn:hover {
-  background: var(--rx-wash);
-  border-color: var(--rx-wash);
-}
-.tts audio {
+.guide__tts audio {
   max-width: 100%;
 }
 .guide {
@@ -1033,25 +989,13 @@
   font-size: var(--step-2);
 }
 .guide__summary {
-  list-style: none;
-  counter-reset: line;
-  padding: 0;
   margin: 0 0 var(--space-2);
-  display: grid;
-  gap: 0.6rem;
-}
-.guide__summary li {
-  counter-increment: line;
-  display: grid;
-  grid-template-columns: 2rem 1fr;
-  align-items: baseline;
   font-size: var(--step-1);
-  line-height: 1.5;
+  line-height: 1.6;
 }
-.guide__summary li::before {
-  content: counter(line);
-  font-weight: 700;
-  color: var(--rx);
+.guide__cautions {
+  margin: 0;
+  padding-left: 1.2em;
 }
 .guide details summary {
   display: inline-flex;
@@ -1154,12 +1098,9 @@
     width: var(--tap);
     padding: 0;
   }
-  .scale__buttons button {
-    min-height: 44px;
-    font-size: var(--step--1);
-  }
   .result__head,
-  .result__body {
+  .result__body,
+  .result__disclaimer {
     padding-inline: 1.25rem;
   }
 }

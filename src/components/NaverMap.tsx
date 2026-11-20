@@ -35,7 +35,7 @@ interface Props {
   center: Coords;
   hospitals: Hospital[];
   selectedId?: string;
-  onSelect?: (hpid: string) => void;
+  onSelect?: (hospitalId: string) => void;
 }
 
 export default function NaverMap(props: Props) {
@@ -62,10 +62,10 @@ function DynamicMap({ center, hospitals, selectedId, onSelect }: Props) {
         }
         markers.current.forEach((m) => m.setMap(null));
         markers.current = hospitals.map((h) => {
-          const selected = h.hpid === selectedId;
-          const color = h.is_emergency ? '#c4281c' : selected ? '#172f6e' : '#2346a0';
+          const selected = h.hospital_id === selectedId;
+          const color = selected ? '#172f6e' : '#2346a0';
           const m = new naver.maps.Marker({
-            position: new naver.maps.LatLng(h.lat, h.lng),
+            position: new naver.maps.LatLng(h.latitude, h.longitude),
             map: map.current,
             title: h.name,
             icon: {
@@ -74,7 +74,7 @@ function DynamicMap({ center, hospitals, selectedId, onSelect }: Props) {
             },
             zIndex: selected ? 100 : 1,
           });
-          naver.maps.Event.addListener(m, 'click', () => onSelect?.(h.hpid));
+          naver.maps.Event.addListener(m, 'click', () => onSelect?.(h.hospital_id));
           return m;
         });
       })
@@ -94,7 +94,7 @@ function FallbackMap({ center, hospitals, selectedId, onSelect }: Props) {
   const span =
     Math.max(
       0.004,
-      ...hospitals.map((h) => Math.max(Math.abs(h.lat - center.lat), Math.abs(h.lng - center.lng))),
+      ...hospitals.map((h) => Math.max(Math.abs(h.latitude - center.lat), Math.abs(h.longitude - center.lng))),
     ) * 1.2;
   const toXY = (lat: number, lng: number) => ({
     x: 50 + ((lng - center.lng) / span) * 45,
@@ -110,16 +110,16 @@ function FallbackMap({ center, hospitals, selectedId, onSelect }: Props) {
         내 위치
       </span>
       {hospitals.map((h, i) => {
-        const { x, y } = toXY(h.lat, h.lng);
-        const selected = h.hpid === selectedId;
-        const cls = ['map__pin', h.is_emergency && 'is-er', selected && 'is-selected'].filter(Boolean).join(' ');
+        const { x, y } = toXY(h.latitude, h.longitude);
+        const selected = h.hospital_id === selectedId;
+        const cls = ['map__pin', selected && 'is-selected'].filter(Boolean).join(' ');
         return (
           <button
-            key={h.hpid}
+            key={h.hospital_id}
             type="button"
             className={cls}
             style={{ left: `${x}%`, top: `${y}%` }}
-            onClick={() => onSelect?.(h.hpid)}
+            onClick={() => onSelect?.(h.hospital_id)}
             aria-label={`${i + 1}번 ${h.name}`}
             aria-pressed={selected}
           >
