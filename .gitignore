@@ -1,0 +1,68 @@
+# ===== Dependencies =====
+node_modules/
+.pnp
+.pnp.js
+.yarn/
+
+# ===== Build output =====
+dist/
+dist-ssr/
+build/
+*.tsbuildinfo
+.vite/
+coverage/
+
+# ===== Environment variables (secrets) =====
+# .env.example 만 커밋하고 실제 값이 담긴 파일은 모두 제외
+.env
+.env.*
+!.env.example
+
+# ===== Logs =====
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ===== AI / Claude Code / Skills =====
+.claude/
+CLAUDE.md
+CLAUDE.local.md
+.mcp.json
+skills/
+.skills/
+.agents/
+.cursor/
+.cursorrules
+.windsurf/
+.codex/
+.gemini/
+.aider*
+.copilot/
+
+# ===== Credentials / keys =====
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+credentials*.json
+secrets*.json
+service-account*.json
+
+# ===== Editor / IDE =====
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.suo
+*.sw?
+*.ntvs*
+*.njsproj
+*.sln
+
+# ===== OS =====
+.DS_Store
+Thumbs.db
+desktop.ini
