@@ -152,19 +152,31 @@ const HOSPITALS: (Omit<Hospital, 'latitude' | 'longitude' | 'department' | 'is_o
   { hospital_id: 'mock_002', name: '(예시) 다라365의원', depts: ['내과', '외과', '이비인후과'], open_hours: week('08:30', '21:00', ['09:00', '18:00'], ['10:00', '16:00']), dLat: -0.004, dLng: -0.008, phone: '02-000-0002', address: '예시시 예시구 예시로 2', distance_km: 0.98 },
   { hospital_id: 'mock_003', name: '(예시) 마바외과', depts: ['외과', '정형외과'], open_hours: week('09:00', '18:00'), dLat: -0.0035, dLng: 0.004, phone: null, address: '예시시 예시구 예시로 3', distance_km: 1.35 },
   { hospital_id: 'mock_004', name: '(예시) 사아응급의료센터', depts: ['응급의학과'], open_hours: week('00:00', '24:00', ['00:00', '24:00'], ['00:00', '24:00']), dLat: 0.0075, dLng: 0.013, phone: '02-000-0119', address: '예시시 예시구 예시로 4', distance_km: 1.72 },
+  // 평일 오전만 여는 곳: 오후·주말에 "진료 중 0건 → 진료 시간 안내"를 확인하기 위한 예시
+  { hospital_id: 'mock_005', name: '(예시) 자차소아청소년과의원', depts: ['소아청소년과', '이비인후과'], open_hours: week('09:00', '12:00'), dLat: 0.003, dLng: 0.006, phone: '02-000-0005', address: '예시시 예시구 예시로 5', distance_km: 0.75 },
 ];
+
+const toMin = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
+/** 목업용 단순 판정(자정 넘김 없음). 실제 판정은 서버가 한다 */
+function mockIsOpen(hours: OpenHours[], d = new Date()): boolean {
+  const today = hours.find((o) => o.day_of_week === DAYS[(d.getDay() + 6) % 7]);
+  if (!today || today.is_closed || !today.open_time || !today.close_time) return false;
+  const m = d.getHours() * 60 + d.getMinutes();
+  return toMin(today.open_time) <= m && m < toMin(today.close_time);
+}
 
 export async function getOpenHospitals(q: HospitalQuery): Promise<HospitalList> {
   await sleep(500);
-  const hospitals: Hospital[] = HOSPITALS.filter((h) => h.depts.includes(q.department) && h.distance_km <= q.radius_km).map(
-    ({ dLat, dLng, depts: _d, ...h }) => ({
+  const hospitals: Hospital[] = HOSPITALS.filter((h) => h.depts.includes(q.department) && h.distance_km <= q.radius_km)
+    .map(({ dLat, dLng, depts: _d, ...h }) => ({
       ...h,
       latitude: q.latitude + dLat,
       longitude: q.longitude + dLng,
       department: q.department,
-      is_open: true,
-    }),
-  );
+      is_open: mockIsOpen(h.open_hours),
+    }))
+    // open_now=true 면 진료 중인 곳만, false 면 반경 안 모든 곳 (계약 5.2)
+    .filter((h) => !q.open_now || h.is_open);
   return { as_of: now(), source_updated_at: null, total_count: hospitals.length, hospitals };
 }
 

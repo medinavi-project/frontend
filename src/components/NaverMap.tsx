@@ -50,9 +50,9 @@ function applySelection(entries: Map<string, MarkerEntry>, selectedId?: string) 
 }
 
 /** 마커 내용은 문자열 HTML 대신 DOM 으로 만든다. 병원 이름은 textContent 로만 넣는다 */
-function pinNode(num: number, name: string): HTMLElement {
+function pinNode(num: number, name: string, closed: boolean): HTMLElement {
   const node = document.createElement('div');
-  node.className = 'nmark';
+  node.className = closed ? 'nmark nmark--closed' : 'nmark';
   const n = document.createElement('span');
   n.textContent = String(num);
   const label = document.createElement('span');
@@ -134,7 +134,7 @@ function DynamicMap({
     markers.current.forEach(({ marker }) => marker.setMap(null));
     markers.current.clear();
     hospitals.forEach((h, i) => {
-      const node = pinNode(i + 1, h.name);
+      const node = pinNode(i + 1, h.name, !h.is_open);
       const marker = new naver.maps.Marker({
         position: new naver.maps.LatLng(h.latitude, h.longitude),
         map: map.current,
@@ -227,7 +227,7 @@ function FallbackMap({ center, centerKind, hospitals, selectedId, onSelect, note
       {hospitals.map((h, i) => {
         const { x, y } = toXY(h.latitude, h.longitude);
         const selected = h.hospital_id === selectedId;
-        const cls = ['map__pin', selected && 'is-selected'].filter(Boolean).join(' ');
+        const cls = ['map__pin', !h.is_open && 'is-closed', selected && 'is-selected'].filter(Boolean).join(' ');
         return (
           <button
             key={h.hospital_id}

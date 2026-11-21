@@ -905,6 +905,60 @@
 .hcard__call {
   justify-self: start;
 }
+/* 진료 시간이 아닌 병원: 번호를 회색 테두리로 (지도 핀과 같게) */
+.hcard.is-closed .hcard__num,
+.map__pin.is-closed,
+.nmark--closed {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: inset 0 0 0 2px var(--ink-soft);
+}
+.map__pin.is-closed,
+.nmark--closed {
+  box-shadow:
+    inset 0 0 0 2px var(--ink-soft),
+    var(--shadow-sm);
+}
+.map__pin.is-closed.is-selected,
+.nmark--closed.is-selected {
+  background: var(--rx-deep);
+  color: var(--paper);
+}
+.hcard__week summary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  cursor: pointer;
+  color: var(--rx-deep);
+  font-weight: 600;
+  font-size: var(--step--1);
+}
+.hcard__week summary:focus-visible {
+  outline: 3px solid var(--rx);
+  outline-offset: 2px;
+}
+.hcard__week dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+  gap: 0.25rem 1rem;
+  margin: 0.25rem 0 0;
+  font-size: var(--step--1);
+}
+.hcard__week dl > div {
+  display: flex;
+  gap: 0.6rem;
+}
+.hcard__week dt {
+  font-weight: 600;
+  min-width: 1.2em;
+}
+.hcard__week dd {
+  margin: 0;
+}
+.hcard__week .is-today {
+  font-weight: 700;
+  color: var(--ink);
+}
 
 /* ── 복약 ── */
 .med {

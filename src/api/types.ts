@@ -102,7 +102,7 @@ export interface HospitalQuery {
   latitude: number;
   longitude: number;
   radius_km: number;
-  open_now: boolean;
+  open_now: boolean; // true: 지금 진료 중인 곳만 / false: 진료 여부와 관계없이 반경 안 모든 곳 (각 is_open 표시)
 }
 export interface HospitalList {
   as_of: string; // 운영 여부 판정 기준 시각
