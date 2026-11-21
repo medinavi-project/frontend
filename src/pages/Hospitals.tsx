@@ -1,10 +1,20 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { errorMessage, getOpenHospitals, type Hospital } from '../api';
+import AddressPicker from '../components/AddressPicker';
 import Icon from '../components/Icon';
-import NaverMap from '../components/NaverMap';
-import { DEFAULT_COORDS, useGeolocation, type Coords } from '../hooks/useGeolocation';
+import NaverMap, { type CenterKind } from '../components/NaverMap';
+import { DEFAULT_COORDS, useGeolocation, type Coords, type GeoError } from '../hooks/useGeolocation';
 import { formatDateTime, formatDistance, todayHours } from '../utils/hours';
+import { hasMapKey, reverseGeocode, searchAddress } from '../utils/naverMaps';
+
+/** 위치를 못 받은 이유와 해결 방법 */
+const GEO_ERROR_TEXT: Record<GeoError, string> = {
+  denied: '위치 권한이 꺼져 있어요. 브라우저 설정에서 위치를 허용하거나 "주소로 찾기"를 눌러 동네를 골라 주세요.',
+  timeout: '내 위치를 확인하는 데 시간이 걸려 멈췄어요. 다시 눌러 보거나 "주소로 찾기"를 눌러 동네를 골라 주세요.',
+  unavailable: '지금은 내 위치를 알 수 없어요. 잠시 뒤 다시 눌러 보거나 "주소로 찾기"를 눌러 동네를 골라 주세요.',
+  unsupported: '이 기기나 주소에서는 내 위치를 쓸 수 없어요. "주소로 찾기"를 눌러 동네를 골라 주세요.',
+};
 
 const DEPTS = ['내과', '외과', '가정의학과', '소아청소년과', '이비인후과', '정형외과', '피부과', '안과', '산부인과', '응급의학과'];
 const RADII_KM = [1, 3, 5];
@@ -25,12 +35,25 @@ export default function Hospitals() {
   const depts = useMemo(() => [...new Set(params.getAll('dept').filter(Boolean))], [params]);
   const radiusParam = Number(params.get('radius_km'));
   const radius = RADII_KM.includes(radiusParam) ? radiusParam : 3;
+  const latParam = Number(params.get('lat'));
+  const lngParam = Number(params.get('lng'));
   const paramCoords: Coords | null =
-    params.get('lat') && params.get('lng') ? { lat: Number(params.get('lat')), lng: Number(params.get('lng')) } : null;
+    params.get('lat') && params.get('lng') && Number.isFinite(latParam) && Number.isFinite(lngParam)
+      ? { lat: latParam, lng: lngParam }
+      : null;
 
   const geo = useGeolocation();
   // 위치 권한이 없으면 서울시청 기준으로 보여 주고 그 사실을 알린다 (PRD 7-2)
   const center: Coords | null = paramCoords ?? geo.coords ?? (geo.status === 'denied' ? DEFAULT_COORDS : null);
+  const centerKind: CenterKind = paramCoords ? 'custom' : geo.coords ? 'me' : 'default';
+
+  // 주소로 위치 정하기. 입력한 주소는 저장하지 않고 이 화면에서만 쓴다
+  const [addrOpen, setAddrOpen] = useState(false);
+  const [addrLabel, setAddrLabel] = useState<string | null>(null);
+  const [addrError, setAddrError] = useState<string | null>(null);
+  const [addrSearching, setAddrSearching] = useState(false);
+  // 내 위치의 동네 이름 (확인되면 안내 문구에만 사용)
+  const [area, setArea] = useState<string | null>(null);
 
   const [data, setData] = useState<Merged | null>(null);
   const [loading, setLoading] = useState(false);
@@ -56,6 +79,18 @@ export default function Hospitals() {
     if (!paramCoords && geo.status === 'idle') void geo.request();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const meLat = !paramCoords ? geo.coords?.lat : undefined;
+  const meLng = !paramCoords ? geo.coords?.lng : undefined;
+  useEffect(() => {
+    setArea(null);
+    if (!hasMapKey || meLat === undefined || meLng === undefined) return;
+    let cancelled = false;
+    void reverseGeocode(meLat, meLng).then((a) => !cancelled && setArea(a));
+    return () => {
+      cancelled = true;
+    };
+  }, [meLat, meLng]);
 
   const deptKey = depts.join(',');
   useEffect(() => {
@@ -120,8 +155,42 @@ export default function Hospitals() {
       next.delete('lat');
       next.delete('lng');
       setParams(next, { replace: true });
+      setAddrLabel(null);
     }
   };
+
+  // 고른 주소(글자)를 좌표로 바꿔 기준 위치로 쓴다
+  const onAddressPick = async (address: string) => {
+    setAddrOpen(false);
+    setAddrSearching(true);
+    setAddrError(null);
+    try {
+      const found = await searchAddress(address);
+      if (found.length === 0) {
+        setAddrError('이 주소의 위치를 찾지 못했어요. 다른 주소로 다시 찾아 주세요.');
+        return;
+      }
+      const next = new URLSearchParams(params);
+      next.set('lat', found[0].lat.toFixed(6));
+      next.set('lng', found[0].lng.toFixed(6));
+      setParams(next, { replace: true });
+      setAddrLabel(address);
+      setSelected(undefined);
+    } catch {
+      setAddrError('위치를 확인하지 못했어요. 잠시 뒤 다시 해 보세요.');
+    } finally {
+      setAddrSearching(false);
+    }
+  };
+
+  const locationNote =
+    centerKind === 'custom'
+      ? `${addrLabel ?? '선택한 위치'} 기준으로 찾아요.`
+      : centerKind === 'me'
+        ? `내 위치${area ? `(${area} 근처)` : ''} 기준으로 찾아요.`
+        : geo.status === 'denied'
+          ? `${geo.error ? GEO_ERROR_TEXT[geo.error] : ''} 지금은 기본 위치(서울시청) 기준이에요.`
+          : null;
 
   return (
     <div className="container hospitals">
@@ -163,14 +232,41 @@ export default function Hospitals() {
           <Icon name="locate" />
           {geo.status === 'pending' ? '위치 확인 중' : '내 위치로 찾기'}
         </button>
+        {hasMapKey && (
+          <button
+            type="button"
+            className="btn btn--ghost"
+            onClick={() => {
+              setAddrError(null);
+              setAddrOpen((v) => !v);
+            }}
+            disabled={addrSearching}
+            aria-expanded={addrOpen}
+          >
+            <Icon name="search" />
+            {addrSearching ? '위치 찾는 중' : '주소로 찾기'}
+          </button>
+        )}
       </div>
-      {!paramCoords && !geo.coords && geo.status === 'denied' && (
-        <p className="muted">위치 권한이 꺼져 있어 기본 위치(서울시청) 기준으로 보여 드려요.</p>
+      {addrOpen && <AddressPicker onPick={onAddressPick} onClose={() => setAddrOpen(false)} />}
+      {addrError && (
+        <div className="error" role="alert">
+          <Icon name="alert" />
+          <span>{addrError}</span>
+        </div>
       )}
+      {locationNote && <p className="muted">{locationNote}</p>}
 
       <div className="hospitals__body">
         {center ? (
-          <NaverMap center={center} hospitals={sorted} selectedId={selected} onSelect={onSelect} />
+          <NaverMap
+            center={center}
+            centerKind={centerKind}
+            radiusKm={radius}
+            hospitals={sorted}
+            selectedId={selected}
+            onSelect={onSelect}
+          />
         ) : (
           <div className="map map--fallback" role="region" aria-label="병원 위치 지도">
             <p className="map__note">내 위치를 확인하고 있어요.</p>

@@ -717,6 +717,109 @@
   font-size: var(--step--1);
   white-space: nowrap;
 }
+/* 네이버 지도가 컨테이너에 position:relative 를 직접 지정하므로 absolute/inset 대신 크기를 명시한다 */
+.map__canvas {
+  width: 100%;
+  height: 100%;
+}
+.map__zoom {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  z-index: 10;
+  display: grid;
+  gap: 0.5rem;
+}
+.map__zoom button {
+  display: grid;
+  place-items: center;
+  width: var(--tap);
+  height: var(--tap);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  transition: border-color 160ms var(--ease);
+}
+.map__zoom button:hover {
+  border-color: var(--ink-soft);
+}
+.map__zoom button:focus-visible {
+  outline: 3px solid var(--rx);
+  outline-offset: 2px;
+}
+/* 실제 지도 위 마커 (JS 가 만든 DOM). 번호는 목록과 같다 */
+.nmark {
+  position: relative;
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 3px solid var(--surface);
+  border-radius: 50%;
+  background: var(--rx);
+  color: var(--on-rx);
+  font-weight: 700;
+  font-size: var(--step-0);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+}
+.nmark.is-selected {
+  background: var(--rx-deep);
+  color: var(--paper);
+}
+.nmark__name,
+.nme__label {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--ink);
+  color: var(--paper);
+  border-radius: 8px;
+  padding: 0.2em 0.7em;
+  font-size: var(--step--1);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.nmark__name {
+  display: none;
+}
+.nmark.is-selected .nmark__name {
+  display: block;
+}
+.nme {
+  position: relative;
+  box-sizing: border-box;
+  width: 18px;
+  height: 18px;
+  border: 3px solid var(--surface);
+  border-radius: 50%;
+  background: var(--ink);
+  box-shadow: var(--shadow-sm);
+}
+.addrpick {
+  margin: 0 0 var(--space-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+  overflow: hidden;
+}
+.addrpick__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 0.5rem 0.75rem 0.5rem 1rem;
+  border-bottom: 1px solid var(--line);
+}
+.addrpick__box {
+  height: 460px;
+  max-height: 70vh;
+}
 .map__note {
   position: absolute;
   left: 0.75rem;
