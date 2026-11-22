@@ -28,6 +28,8 @@ const GREETING = '안녕하세요. 어디가 어떻게 불편하세요?';
 /** 분석 결과를 자동으로 확인하는 최대 시간. 넘으면 멈추고 "결과 다시 확인하기"를 보여 준다 (백엔드 계약상 TBD) */
 const POLL_LIMIT_MS = 60_000;
 const DEFAULT_POLL_SEC = 2;
+/** 사용자 메시지 최대 수(첫 증상 포함). 5번째에는 서버가 반드시 문진을 끝낸다 (Notion 명세 v1) */
+const MAX_TURNS = 5;
 
 /** 화면 단계: intro = 첫 증상 입력 전, ended = 세션 만료 등으로 더 진행할 수 없음 */
 type Phase = 'intro' | ChatStatus | 'ended';
@@ -84,6 +86,11 @@ export default function Chat() {
       if (e.code === 'SESSION_NOT_FOUND') {
         setPhase('ended');
         setError('상담 시간이 지나 이어서 진행할 수 없어요. "상담 다시 시작"을 눌러 주세요.');
+        return;
+      }
+      if (e.code === 'SESSION_NOT_ACTIVE') {
+        setPhase('ended');
+        setError('이 상담은 이미 끝났어요. "상담 다시 시작"을 눌러 새로 상담해 주세요.');
         return;
       }
       // 분석 실패는 data 에 FAILED 상태를 담아 온다
@@ -184,6 +191,12 @@ export default function Chat() {
       if (sid !== currentSid.current) return;
       if (e instanceof ApiError) {
         if (e.code === 'SESSION_ALREADY_COMPLETED') return startPolling(sid, 0);
+        // 답변 처리 중 AI 호출이 실패하면 서버가 세션을 FAILED 로 바꾼다 (Notion 명세). 같은 상담으로는 이어 갈 수 없다
+        if (e.code === 'AI_REQUEST_FAILED' || e.code === 'AI_RESPONSE_INVALID') {
+          setPhase('FAILED');
+          setError(`${e.message} "상담 다시 시작"을 눌러 새로 상담해 주세요.`);
+          return;
+        }
         if (e.code === 'SESSION_ANALYSIS_IN_PROGRESS' || e.code === 'SESSION_TURN_LIMIT_EXCEEDED') {
           setHasQuestion(false);
           return startPolling(sid, 0);
@@ -331,7 +344,9 @@ export default function Chat() {
           </div>
           <div className={`slot${turn > 0 ? ' is-filled' : ''}`}>
             <dt>말씀하신 횟수</dt>
-            <dd>{turn}번</dd>
+            <dd>
+              {turn}번 <span className="muted">(최대 {MAX_TURNS}번)</span>
+            </dd>
           </div>
           {collectedRows(collected).map(([label, value]) => (
             <div key={label} className="slot is-filled">

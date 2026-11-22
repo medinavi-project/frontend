@@ -1,4 +1,4 @@
-// 백엔드 API 계약 기준 타입 (Swagger http://101.79.27.212:8000/docs 의 openapi.json, 2026-11-22 기준)
+// 백엔드 API 계약 기준 타입 (Notion「MediNavi API 명세서 (v1 · 2026-11-22)」 + Swagger /docs 의 openapi.json)
 // 모든 응답은 { code, message, data } envelope 이며 client.ts 가 풀어서 data 만 돌려준다.
 
 /* ── 공통 ── */
@@ -21,8 +21,8 @@ export interface ChatSession {
   session_id: string;
   status: ChatStatus;
   next_question: string | null; // 질문은 문장 하나. 응급·완료면 null
-  turn_count: number;
-  expires_at: string;
+  turn_count: number; // 사용자 메시지 수(첫 증상 포함). 생성 직후 1, 최대 5
+  expires_at: string; // 마지막 활동 후 30분 (UTC)
   emergency_message?: string | null; // EMERGENCY 에서만
 }
 
@@ -64,7 +64,7 @@ export interface ChatResult {
   symptom_summary?: string | null;
   suspected_diseases?: SuspectedDisease[]; // 근거 부족이면 빈 배열
   recommended_department?: string | null;
-  references?: string[]; // 출처 문자열 목록
+  references?: string[]; // "제목 | 출처 | URL" 형식 문자열
   medical_disclaimer?: string; // 서버 기본 문구
   failure_code?: string | null; // FAILED 원인
 }
@@ -107,7 +107,8 @@ export interface HospitalList {
 
 /* ── 복약 ── */
 
-/** POST /api/v1/medications/scan (multipart, 필드 file) — 안내 API 는 따로 없고 스캔 응답에 안내가 들어 있다 */
+/** POST /api/v1/medications/scan (multipart, 필드 file: JPG·PNG·WEBP, 최대 5MB) — 안내 API 는 따로 없고 스캔 응답에 안내가 들어 있다
+ * COMPLETED 모두 확인 / PARTIAL 일부 / NEEDS_CONFIRMATION 하나도 확인 못함 / INCOMPLETE 공식 정보 없음 / OCR_ONLY 글자만 인식(데모) */
 export type ScanStatus = 'COMPLETED' | 'NEEDS_CONFIRMATION' | 'INCOMPLETE' | 'OCR_ONLY' | 'PARTIAL';
 export type GuidanceStatus = 'AVAILABLE' | 'PARTIAL' | 'UNAVAILABLE';
 export interface MedicationDescription {
@@ -122,7 +123,7 @@ export interface MedicationCard {
   name: string;
   description: MedicationDescription;
   guidance_status: GuidanceStatus;
-  warning?: string | null;
+  warning?: string | null; // 이름이 비슷한 약으로 추정했을 때의 주의 문구
 }
 /** 확실히 찾지 못한 약 */
 export interface UncertainMedicationCard {

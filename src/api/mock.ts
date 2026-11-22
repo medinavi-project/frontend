@@ -56,11 +56,11 @@ export async function createSession(initialSymptom: string): Promise<ChatSession
   const id = uuid();
   const expires_at = new Date(Date.now() + 30 * 60_000).toISOString();
   if (RED_FLAGS.some((k) => initialSymptom.includes(k))) {
-    sessions.set(id, { status: 'EMERGENCY', turn: 0, answered: new Set(), analyzeUntil: 0 });
-    return { session_id: id, status: 'EMERGENCY', next_question: null, turn_count: 0, expires_at, emergency_message: EMERGENCY_MESSAGE };
+    sessions.set(id, { status: 'EMERGENCY', turn: 1, answered: new Set(), analyzeUntil: 0 });
+    return { session_id: id, status: 'EMERGENCY', next_question: null, turn_count: 1, expires_at, emergency_message: EMERGENCY_MESSAGE };
   }
-  sessions.set(id, { status: 'IN_PROGRESS', turn: 0, answered: new Set(), analyzeUntil: 0 });
-  return { session_id: id, status: 'IN_PROGRESS', next_question: QUESTIONS[0], turn_count: 0, expires_at };
+  sessions.set(id, { status: 'IN_PROGRESS', turn: 1, answered: new Set(), analyzeUntil: 0 });
+  return { session_id: id, status: 'IN_PROGRESS', next_question: QUESTIONS[0], turn_count: 1, expires_at };
 }
 
 export async function sendMessage(id: string, clientMessageId: string, message: string): Promise<ChatMessage> {
@@ -82,7 +82,7 @@ export async function sendMessage(id: string, clientMessageId: string, message: 
     return { ...base(id, s), emergency_message: EMERGENCY_MESSAGE };
   }
 
-  const next = QUESTIONS[s.turn];
+  const next = QUESTIONS[s.turn - 1];
   if (next) return { ...base(id, s), next_question: next };
 
   s.status = 'ANALYZING';

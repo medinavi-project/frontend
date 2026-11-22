@@ -3,6 +3,10 @@ import Icon from '../components/Icon';
 import { errorMessage, scanMedication, type MedicationCard, type MedicationScan } from '../api';
 import { plainText } from '../utils/text';
 
+/** 서버가 받는 사진 형식·크기 (Notion 명세 v1 2026-11-22: JPG·PNG·WEBP, 최대 5MB) */
+const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const MAX_IMAGE_MB = 5;
+
 export default function Medication() {
   const [preview, setPreview] = useState<string | null>(null);
   const [scan, setScan] = useState<MedicationScan | null>(null);
@@ -20,6 +24,15 @@ export default function Medication() {
     const file = e.target.files?.[0];
     e.target.value = ''; // 같은 파일을 다시 골라도 동작하도록
     if (!file || loading) return;
+    // 서버에 보내기 전에 형식·크기를 확인해 바로 안내한다
+    if (!IMAGE_TYPES.includes(file.type)) {
+      setError('JPG, PNG, WEBP 사진만 올릴 수 있어요. 카메라로 다시 찍거나 다른 사진을 골라 주세요.');
+      return;
+    }
+    if (file.size > MAX_IMAGE_MB * 1024 * 1024) {
+      setError(`사진이 ${MAX_IMAGE_MB}MB보다 커요. 더 작은 사진을 골라 주세요.`);
+      return;
+    }
     setPreview(URL.createObjectURL(file));
     setError(null);
     setLoading(true);
@@ -59,7 +72,7 @@ export default function Medication() {
       {!scan && (
         <section className="panel med__upload">
           <label className="dropzone">
-            <input type="file" accept="image/*" capture="environment" onChange={onFile} disabled={loading} />
+            <input type="file" accept={IMAGE_TYPES.join(',')} capture="environment" onChange={onFile} disabled={loading} />
             {preview ? (
               <img src={preview} alt="올린 약봉투 사진" />
             ) : (
@@ -156,8 +169,9 @@ function GuideCard({ med, index, total }: { med: MedicationCard; index: number; 
         {/* 허가된 일반 용법은 실제 처방과 다를 수 있어 읽지 않는다. 효능만 읽는다. */}
         {!unavailable && d.purpose && <TtsPlayer text={`${med.name}. ${d.purpose}`} />}
       </div>
+      {/* 비슷한 이름의 약으로 추정했다는 주의. 빨강은 응급 전용이라 안내 상자로 보여 준다 */}
       {med.warning && (
-        <p className="error" role="note">
+        <p className="med__notice" role="note">
           <Icon name="alert" />
           {med.warning}
         </p>
