@@ -42,3 +42,8 @@ export function formatDateTime(iso: string): string {
   if (Number.isNaN(d.getTime())) return '';
   return d.toLocaleString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short', hour: 'numeric', minute: '2-digit' });
 }
+
+/** 아픈 정도 표시: 0~10점 */
+export function formatScore(n: number): string {
+  return `${n}점 (0~10점 중)`;
+}

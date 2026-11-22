@@ -39,5 +39,5 @@ src/
   styles/       global.css(디자인 토큰) · pages.css
 ```
 
-API 계약의 기준은 Notion「MediNavi — Backend API Documentation」이고, 코드에서는 `src/api/types.ts`가 그것을 옮긴 것입니다.
+API 계약의 기준은 백엔드 Swagger(`/docs`)이고, 코드에서는 `src/api/types.ts`가 그것을 옮긴 것입니다.
 모든 응답은 `{ code, message, data }` 형태이며 `client.ts`가 `data`만 꺼내 줍니다. 실패하면 `ApiError`(`code`로 분기)를 던집니다.

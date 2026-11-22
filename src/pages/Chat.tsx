@@ -6,14 +6,13 @@ import {
   errorMessage,
   getResult,
   sendMessage,
-  type AnalysisResult,
-  type AssessmentStatus,
   type ChatResult,
   type ChatStatus,
-  type Question,
+  type CollectedSymptoms,
 } from '../api';
 import EmergencyBanner from '../components/EmergencyBanner';
 import Icon from '../components/Icon';
+import { formatScore } from '../utils/hours';
 
 interface Message {
   id: number;
@@ -39,18 +38,20 @@ export default function Chat() {
 
   const [phase, setPhase] = useState<Phase>('intro');
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [question, setQuestion] = useState<Question | null>(null);
+  const [hasQuestion, setHasQuestion] = useState(false);
   const [messages, setMessages] = useState<Message[]>([bot(GREETING)]);
   const [symptom, setSymptom] = useState<string | null>(null);
   const [turn, setTurn] = useState(0);
   const [guidance, setGuidance] = useState<string | null>(null);
-  const [result, setResult] = useState<{ assessment: AssessmentStatus | null; result: AnalysisResult } | null>(null);
+  const [result, setResult] = useState<ChatResult | null>(null);
+  const [collected, setCollected] = useState<CollectedSymptoms>({});
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pollStopped, setPollStopped] = useState(false);
   const [input, setInput] = useState('');
 
   const booted = useRef(false);
+  const messageKey = useRef<{ text: string; id: string } | null>(null); // 전송 실패 뒤 같은 답변을 다시 보낼 때 같은 id 를 쓴다
   const currentSid = useRef<string | null>(null); // 다시 시작한 뒤 이전 상담의 늦은 응답을 무시하기 위함
   const pollTimer = useRef<number | null>(null);
   const pollUntil = useRef(0);
@@ -64,8 +65,8 @@ export default function Chat() {
 
   /** 결과 조회 응답을 화면 상태에 반영. 계속 기다려야 하면 true */
   const applyResult = useCallback((r: ChatResult): boolean => {
-    if (r.status === 'COMPLETED' && r.result) {
-      setResult({ assessment: r.assessment_status, result: r.result });
+    if (r.status === 'COMPLETED') {
+      setResult(r);
       setPhase('COMPLETED');
       return false;
     }
@@ -109,7 +110,7 @@ export default function Chat() {
             setPollStopped(true);
             return;
           }
-          poll(sid, r.retry_after_seconds ?? DEFAULT_POLL_SEC);
+          poll(sid, DEFAULT_POLL_SEC);
         } catch (e) {
           if (sid !== currentSid.current) return;
           setPollStopped(true);
@@ -143,9 +144,10 @@ export default function Chat() {
       currentSid.current = s.session_id;
       setSessionId(s.session_id);
       setTurn(s.turn_count);
-      setQuestion(s.next_question);
+      setHasQuestion(!!s.next_question);
       setPhase(s.status);
-      setMessages((m) => [...m, bot(s.next_question.text)]);
+      if (s.next_question) setMessages((m) => [...m, bot(s.next_question!)]);
+      if (s.status === 'EMERGENCY') setGuidance(s.emergency_message ?? null);
     } catch (e) {
       // 입력을 되돌려 다시 보낼 수 있게 한다
       setMessages((m) => m.slice(0, -1));
@@ -158,23 +160,24 @@ export default function Chat() {
   };
 
   /** 현재 질문에 대한 답변 전송 */
-  const answer = async (sid: string, q: Question, text: string) => {
+  const answer = async (sid: string, text: string) => {
     setMessages((m) => [...m, user(text)]);
     setPending(true);
     setError(null);
     try {
-      const res = await sendMessage(sid, q.question_id, text);
+      if (messageKey.current?.text !== text) messageKey.current = { text, id: crypto.randomUUID() };
+      const res = await sendMessage(sid, messageKey.current.id, text);
+      messageKey.current = null;
       if (sid !== currentSid.current) return;
       setTurn(res.turn_count);
-      setQuestion(res.next_question);
+      setCollected(res.collected_symptoms ?? {});
+      setHasQuestion(!!res.next_question);
       setPhase(res.status);
       if (res.status === 'IN_PROGRESS' && res.next_question) {
-        setMessages((m) => [...m, bot(res.next_question!.text)]);
-      } else {
-        setMessages((m) => [...m, bot(res.assistant_message)]);
+        setMessages((m) => [...m, bot(res.next_question!)]);
       }
-      if (res.status === 'EMERGENCY') setGuidance(res.emergency_guidance);
-      if (res.status === 'ANALYZING') startPolling(sid, res.retry_after_seconds ?? DEFAULT_POLL_SEC);
+      if (res.status === 'EMERGENCY') setGuidance(res.emergency_message ?? null);
+      if (res.status === 'ANALYZING') startPolling(sid, DEFAULT_POLL_SEC);
       if (res.status === 'COMPLETED') startPolling(sid, 0);
       if (res.status === 'FAILED') setError('결과를 분석하지 못했어요. "상담 다시 시작"을 눌러 새로 상담해 주세요.');
     } catch (e) {
@@ -182,11 +185,11 @@ export default function Chat() {
       if (e instanceof ApiError) {
         if (e.code === 'SESSION_ALREADY_COMPLETED') return startPolling(sid, 0);
         if (e.code === 'SESSION_ANALYSIS_IN_PROGRESS' || e.code === 'SESSION_TURN_LIMIT_EXCEEDED') {
-          setQuestion(null);
+          setHasQuestion(false);
           return startPolling(sid, 0);
         }
       }
-      // 같은 질문·같은 답변은 서버가 중복 처리하지 않으므로, 입력을 되돌려 사용자가 직접 다시 보내게 한다
+      // 자동 재전송하지 않고, 입력을 되돌려 사용자가 직접 다시 보내게 한다
       setMessages((m) => m.slice(0, -1));
       setInput(text);
       failFromError(e, '답변을 보내지 못했어요. 잠시 뒤 다시 보내 주세요.');
@@ -200,7 +203,9 @@ export default function Chat() {
     currentSid.current = null;
     setPhase('intro');
     setSessionId(null);
-    setQuestion(null);
+    setHasQuestion(false);
+    setCollected({});
+    messageKey.current = null;
     setMessages([bot(GREETING)]);
     setSymptom(null);
     setTurn(0);
@@ -229,9 +234,9 @@ export default function Chat() {
     if (phase === 'intro') {
       setInput('');
       void begin(t);
-    } else if (phase === 'IN_PROGRESS' && sessionId && question) {
+    } else if (phase === 'IN_PROGRESS' && sessionId && hasQuestion) {
       setInput('');
-      void answer(sessionId, question, t);
+      void answer(sessionId, t);
     }
   };
 
@@ -241,7 +246,6 @@ export default function Chat() {
   };
 
   const canType = phase === 'intro' || phase === 'IN_PROGRESS';
-  const choices = phase === 'IN_PROGRESS' && !pending && question?.answer_type === 'SINGLE_CHOICE' ? question.options : [];
 
   return (
     <div className="container chat">
@@ -292,21 +296,10 @@ export default function Chat() {
           </div>
         )}
         {phase === 'EMERGENCY' && <EmergencyBanner message={guidance ?? undefined} />}
-        {phase === 'COMPLETED' && result && <ResultCard assessment={result.assessment} result={result.result} />}
+        {phase === 'COMPLETED' && result && <ResultCard result={result} />}
 
         {canType && (
           <div className="composer">
-            {choices.length > 0 && (
-              <ul className="chips" aria-label="빠른 답변">
-                {choices.map((c) => (
-                  <li key={c}>
-                    <button type="button" className="chip" onClick={() => submit(c)}>
-                      {c}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
             <form className="chat__form" onSubmit={onSubmit}>
               <label htmlFor="chat-input" className="visually-hidden">
                 {phase === 'intro' ? '증상 입력' : '답변 입력'}
@@ -337,9 +330,15 @@ export default function Chat() {
             <dd>{symptom ?? '아직 몰라요'}</dd>
           </div>
           <div className={`slot${turn > 0 ? ' is-filled' : ''}`}>
-            <dt>답하신 질문</dt>
-            <dd>{turn}개</dd>
+            <dt>말씀하신 횟수</dt>
+            <dd>{turn}번</dd>
           </div>
+          {collectedRows(collected).map(([label, value]) => (
+            <div key={label} className="slot is-filled">
+              <dt>{label}</dt>
+              <dd>{value}</dd>
+            </div>
+          ))}
           <div className="slot is-filled">
             <dt>지금 단계</dt>
             <dd>{PHASE_LABEL[phase]}</dd>
@@ -360,9 +359,38 @@ const PHASE_LABEL: Record<Phase, string> = {
   ended: '다시 상담 필요',
 };
 
-function ResultCard({ assessment, result }: { assessment: AssessmentStatus | null; result: AnalysisResult }) {
+/** 서버가 정리한 증상 정보를 화면 표시용 (이름, 값) 목록으로. 값이 없는 항목은 뺀다 */
+function collectedRows(c: CollectedSymptoms): [string, string][] {
+  const rows: [string, string | null | undefined][] = [
+    ['주된 증상', c.main_symptom],
+    ['아픈 곳', c.body_location],
+    ['시작 시점', c.onset],
+    ['아픈 정도', c.severity != null ? formatScore(c.severity) : null],
+    ['함께 있는 증상', c.additional_symptoms?.length ? c.additional_symptoms.join(', ') : null],
+    ['지역', c.region],
+  ];
+  return rows.filter((r): r is [string, string] => !!r[1]);
+}
+
+/** 서버가 "제목 | 기관 | 주소" 문자열로 주는 출처. 마지막 칸이 http 주소면 제목을 링크로 건다 */
+function Reference({ text }: { text: string }) {
+  const parts = text.split('|').map((x) => x.trim());
+  const url = parts.length > 1 && /^https?:\/\//.test(parts[parts.length - 1]) ? parts.pop()! : null;
+  const label = parts.join(' · ');
+  return url ? (
+    <a href={url} target="_blank" rel="noopener noreferrer">
+      {label}
+    </a>
+  ) : (
+    <p>{label}</p>
+  );
+}
+
+function ResultCard({ result }: { result: ChatResult }) {
   const dept = result.recommended_department;
-  const insufficient = assessment === 'INSUFFICIENT_EVIDENCE';
+  const diseases = result.suspected_diseases ?? [];
+  const references = result.references ?? [];
+  const insufficient = result.assessment_status === 'INSUFFICIENT_EVIDENCE' || result.assessment_status === 'INSUFFICIENT_INFORMATION';
   return (
     <section className="result" aria-labelledby="result-title">
       <div className="result__head">
@@ -371,7 +399,7 @@ function ResultCard({ assessment, result }: { assessment: AssessmentStatus | nul
           <h2 id="result-title" className="result__dept">
             {dept ?? '정하기 어려워요'}
           </h2>
-          <p className="result__summary muted">{result.reason}</p>
+          {result.symptom_summary && <p className="result__summary muted">{result.symptom_summary}</p>}
         </div>
         {dept && (
           <Link className="btn" to={`/hospitals?${new URLSearchParams({ dept })}`}>
@@ -383,11 +411,11 @@ function ResultCard({ assessment, result }: { assessment: AssessmentStatus | nul
       <div className="result__body">
         <div>
           <h3>의심되는 질환</h3>
-          {insufficient || result.suspected_diseases.length === 0 ? (
+          {insufficient || diseases.length === 0 ? (
             <p className="muted">말씀해 주신 내용만으로는 의심되는 질환을 말씀드리기 어려워요.</p>
           ) : (
             <ul className="result__diseases">
-              {result.suspected_diseases.map((d) => (
+              {diseases.map((d) => (
                 <li key={d.disease_name}>
                   <strong>{d.disease_name}</strong>
                   <span className="muted">{d.reason}</span>
@@ -400,25 +428,20 @@ function ResultCard({ assessment, result }: { assessment: AssessmentStatus | nul
           <h3>
             <Icon name="doc" /> 참고한 자료
           </h3>
-          {result.references.length === 0 ? (
+          {references.length === 0 ? (
             <p className="muted">참고한 자료가 없어요.</p>
           ) : (
             <ul className="result__evidence">
-              {result.references.map((r) => (
-                <li key={r.url}>
-                  <span className="muted">{r.organization}</span>
-                  <p>
-                    <a href={r.url} target="_blank" rel="noopener noreferrer">
-                      {r.title}
-                    </a>
-                  </p>
+              {references.map((r, i) => (
+                <li key={i}>
+                  <Reference text={r} />
                 </li>
               ))}
             </ul>
           )}
         </div>
       </div>
-      <p className="result__disclaimer muted">{result.medical_disclaimer}</p>
+      {result.medical_disclaimer && <p className="result__disclaimer muted">{result.medical_disclaimer}</p>}
     </section>
   );
 }

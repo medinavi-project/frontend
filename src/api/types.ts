@@ -1,4 +1,4 @@
-// 백엔드 API 계약 기준 타입 (Notion「MediNavi — Backend API Documentation」, 2026-11-20 개정, 상태 Review)
+// 백엔드 API 계약 기준 타입 (Swagger http://101.79.27.212:8000/docs 의 openapi.json, 2026-11-22 기준)
 // 모든 응답은 { code, message, data } envelope 이며 client.ts 가 풀어서 data 만 돌려준다.
 
 /* ── 공통 ── */
@@ -11,68 +11,62 @@ export interface FieldError {
 /** 문진 진행 상태 (data.status). HTTP status·응답 code 와 별개 */
 export type ChatStatus = 'IN_PROGRESS' | 'ANALYZING' | 'COMPLETED' | 'FAILED' | 'EMERGENCY';
 
-export interface Question {
-  question_id: string;
-  text: string;
-  answer_type: 'TEXT' | 'SINGLE_CHOICE';
-  options: string[]; // TEXT 이면 빈 배열
-}
-
 /* ── 문진 ── */
 
-/** POST /api/v1/chat/sessions */
+/** POST /api/v1/chat/sessions (201) */
 export interface CreateSessionRequest {
-  initial_symptom: string;
+  initial_message: string; // 1~1000자
 }
 export interface ChatSession {
   session_id: string;
-  status: ChatStatus; // 생성 시 IN_PROGRESS
-  created_at: string;
-  turn_count: number; // 0부터. 최초 증상은 세지 않음
-  next_question: Question;
+  status: ChatStatus;
+  next_question: string | null; // 질문은 문장 하나. 응급·완료면 null
+  turn_count: number;
+  expires_at: string;
+  emergency_message?: string | null; // EMERGENCY 에서만
 }
 
 /** POST /api/v1/chat/sessions/{session_id}/messages */
 export interface SendMessageRequest {
-  question_id: string;
-  message: string;
+  client_message_id: string; // uuid. 같은 값으로 다시 보내면 서버가 중복 처리하지 않는 용도
+  message: string; // 1~1000자
+}
+/** 서버가 지금까지 정리한 증상 정보 */
+export interface CollectedSymptoms {
+  main_symptom?: string | null;
+  body_location?: string | null;
+  onset?: string | null;
+  severity?: number | null; // 0~10
+  additional_symptoms?: string[];
+  region?: string | null;
 }
 export interface ChatMessage {
   session_id: string;
   status: ChatStatus;
+  next_question: string | null;
   turn_count: number;
-  assistant_message: string;
-  next_question: Question | null; // IN_PROGRESS 에서만 객체
-  result_available: boolean; // COMPLETED 일 때만 true
-  failure_code: string | null; // FAILED 원인
-  emergency_guidance: string | null; // EMERGENCY 에서만
-  retry_after_seconds?: number | null; // ANALYZING 에서 다음 조회 권고 간격
+  collected_symptoms: CollectedSymptoms;
+  result_available: boolean;
+  emergency_message?: string | null;
 }
 
-/** GET /api/v1/chat/sessions/{session_id}/result */
-export type AssessmentStatus = 'ASSESSED' | 'INSUFFICIENT_EVIDENCE';
+/** GET /api/v1/chat/sessions/{session_id}/result — 결과 필드가 data 에 바로 펼쳐져 있다 */
+export type AssessmentStatus = 'PRELIMINARY' | 'INSUFFICIENT_INFORMATION' | 'INSUFFICIENT_EVIDENCE';
 export interface SuspectedDisease {
   disease_name: string;
   reason: string;
 }
-export interface Reference {
-  title: string;
-  organization: string;
-  url: string;
-}
-export interface AnalysisResult {
-  suspected_diseases: SuspectedDisease[]; // 근거 부족이면 빈 배열
-  recommended_department: string | null;
-  reason: string;
-  references: Reference[];
-  medical_disclaimer: string;
-}
 export interface ChatResult {
   session_id: string;
   status: ChatStatus;
-  assessment_status: AssessmentStatus | null; // 미완료면 null
-  result: AnalysisResult | null; // COMPLETED 일 때만 객체
-  retry_after_seconds: number | null;
+  assessment_status?: AssessmentStatus | null; // 미완료면 null
+  analysis_source?: string | null;
+  symptom_summary?: string | null;
+  suspected_diseases?: SuspectedDisease[]; // 근거 부족이면 빈 배열
+  recommended_department?: string | null;
+  references?: string[]; // 출처 문자열 목록
+  medical_disclaimer?: string; // 서버 기본 문구
+  failure_code?: string | null; // FAILED 원인
 }
 
 /* ── 병원 ── */
@@ -113,41 +107,33 @@ export interface HospitalList {
 
 /* ── 복약 ── */
 
-/** POST /api/v1/medications/scan (multipart, 필드 file) */
-export type MatchStatus = 'MATCHED' | 'AMBIGUOUS' | 'NOT_FOUND';
-export interface MedicationCandidate {
-  item_seq: string;
-  item_name: string;
-  manufacturer: string | null;
+/** POST /api/v1/medications/scan (multipart, 필드 file) — 안내 API 는 따로 없고 스캔 응답에 안내가 들어 있다 */
+export type ScanStatus = 'COMPLETED' | 'NEEDS_CONFIRMATION' | 'INCOMPLETE' | 'OCR_ONLY' | 'PARTIAL';
+export type GuidanceStatus = 'AVAILABLE' | 'PARTIAL' | 'UNAVAILABLE';
+export interface MedicationDescription {
+  purpose?: string | null;
+  how_to_take?: string | null;
+  precautions?: string | null;
+  side_effects?: string | null;
+  storage?: string | null;
 }
-export interface ScannedMedication {
-  item_seq: string | null; // MATCHED 일 때만 값
-  item_name: string; // OCR 문자열 또는 표준 제품명
-  match_status: MatchStatus;
-  candidates: MedicationCandidate[];
+export interface MedicationCard {
+  item_seq: string;
+  name: string;
+  description: MedicationDescription;
+  guidance_status: GuidanceStatus;
+  warning?: string | null;
+}
+/** 확실히 찾지 못한 약 */
+export interface UncertainMedicationCard {
+  recognized_name: string;
+  reason: string;
+  action_message: string;
 }
 export interface MedicationScan {
-  scan_id: string;
-  recognized_text: string;
-  medications: ScannedMedication[];
-}
-
-/** POST /api/v1/medications/guide */
-export interface GuideRequest {
-  medications: { item_seq: string }[];
-}
-export type AudioStatus = 'READY' | 'NOT_GENERATED' | 'FAILED';
-export interface MedicationGuideItem {
-  item_seq: string;
-  item_name: string;
-  efficacy: string | null; // 공식 원문
-  usage: string | null;
-  cautions: string[];
-  official_source: { organization: string; url: string | null };
-  summary: string; // 공식 원문을 쉽게 풀어 쓴 설명
-  audio_status: AudioStatus;
-  audio_url: string | null; // READY 일 때만
-}
-export interface MedicationGuide {
-  medications: MedicationGuideItem[]; // 요청 순서와 같음
+  status: ScanStatus;
+  identified_count: number;
+  uncertain_count: number;
+  medications: MedicationCard[];
+  uncertain_medications: UncertainMedicationCard[];
 }

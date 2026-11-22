@@ -1,6 +1,6 @@
 # 메디나비 PRD (프론트엔드)
 
-> 출처: 「AI 증상 상담·복약 안내 서비스 기술문서」(2026-11-20), Notion「MediNavi — Backend API Documentation」(2026-11-20 개정, 계약 상태 Review).
+> 출처: 「AI 증상 상담·복약 안내 서비스 기술문서」(2026-11-20), 백엔드 Swagger(http://101.79.27.212:8000/docs, 2026-11-22 새로 작성된 명세). 이전 Notion 계약(2026-11-20)과 모양이 크게 달라 이 명세를 기준으로 다시 맞췄다.
 > 이 문서는 프론트엔드가 맡는 범위만 정리합니다. 백엔드·인프라·데이터 파이프라인은 다른 조원 담당이며, 이 저장소에는 없습니다.
 
 ## 1. 한 줄 요약
@@ -25,24 +25,23 @@
 ## 4. 핵심 기능
 
 ### F1. 대화형 증상 문진 (`/chat`)
-- 첫 증상을 받아 세션을 만든다(`initial_symptom`). 홈에서 입력했으면 바로 시작하고, 아니면 채팅 화면에서 먼저 묻는다. 첫 증상은 세션 생성에서만 보내고 메시지 API로 다시 보내지 않는다.
-- 이후 질문은 **서버가 하나씩 내려준다**(`next_question`). 프론트는 질문을 고르거나 슬롯을 판단하지 않는다.
-  - `answer_type=SINGLE_CHOICE`면 `options`를 답변 버튼으로 보여 준다. 직접 입력도 가능하다.
-  - 답변은 `question_id`와 함께 보낸다. 같은 질문·같은 답변은 서버가 중복 처리하지 않으므로, 전송 실패 시 입력을 되돌려 사용자가 직접 다시 보낸다(자동 재전송 없음).
+- 첫 증상을 받아 세션을 만든다(`initial_message`, 1~1000자). 응급이면 세션 생성 응답이 바로 `EMERGENCY`다. 홈에서 입력했으면 바로 시작하고, 아니면 채팅 화면에서 먼저 묻는다. 첫 증상은 세션 생성에서만 보내고 메시지 API로 다시 보내지 않는다.
+- 이후 질문은 **서버가 문장 하나(`next_question`, 문자열)로 내려준다**. 프론트는 질문을 고르거나 슬롯을 판단하지 않는다. 선택지는 없고 직접 입력만 받는다.
+  - 답변은 `client_message_id`(프론트가 만든 uuid)와 함께 보낸다. 전송 실패 시 입력을 되돌려 사용자가 직접 다시 보내고(자동 재전송 없음), 같은 답변이면 같은 `client_message_id`를 쓴다.
 - 문진 상태(`data.status`)별 화면:
 
   | 상태 | 화면 |
   | --- | --- |
   | `IN_PROGRESS` | 다음 질문 표시, 입력 받기 |
-  | `ANALYZING` | 입력 잠금, "결과를 정리하고 있어요". 서버가 준 `retry_after_seconds` 간격으로 결과 조회, **최대 60초** 후 멈추고 "결과 다시 확인하기" 버튼 |
+  | `ANALYZING` | 입력 잠금, "결과를 정리하고 있어요". 2초 간격으로 결과 조회(서버가 간격을 주지 않는다), **최대 60초** 후 멈추고 "결과 다시 확인하기" 버튼 |
   | `COMPLETED` | 결과 카드 |
   | `FAILED` | 실패 안내, "상담 다시 시작" |
-  | `EMERGENCY` | `EmergencyBanner`에 서버 `emergency_guidance` 표시, 입력·분석·병원 검색 중단 |
+  | `EMERGENCY` | `EmergencyBanner`에 서버 `emergency_message` 표시, 입력·분석·병원 검색 중단 |
 
 - **위험 신호 판단은 서버**가 한다(`status=EMERGENCY`). 프론트는 키워드를 직접 판단하지 않는다.
-- 진행 패널: 처음 말씀하신 증상, 답한 질문 수, 지금 단계.
-- 결과 카드: 추천 진료과(큰 글씨), 평가 설명(`reason`), 의심되는 질환과 이유, 참고한 자료(기관·제목·링크), 서버 면책 문구(`medical_disclaimer`), "지금 문 연 ○○ 찾기" 버튼.
-  - `assessment_status=INSUFFICIENT_EVIDENCE`이거나 질환 목록이 비면 "의심되는 질환을 말씀드리기 어려워요"로 안내한다(오류 아님).
+- 진행 패널: 처음 말씀하신 증상, 말씀하신 횟수(`turn_count`, 첫 증상 포함), 지금 단계, 서버가 정리한 증상(`collected_symptoms`: 주된 증상·아픈 곳·시작 시점·정도·함께 있는 증상·지역 중 값이 있는 것).
+- 결과 카드: 추천 진료과(큰 글씨), 증상 요약(`symptom_summary`), 의심되는 질환과 이유, 참고한 자료(`references` 문자열 목록. 실서버는 "제목 | 기관 | URL" 형식이라 마지막이 URL이면 링크로 건다), 서버 면책 문구(`medical_disclaimer`), "지금 문 연 ○○ 찾기" 버튼.
+  - `assessment_status`가 `INSUFFICIENT_EVIDENCE`·`INSUFFICIENT_INFORMATION`이거나 질환 목록이 비면 "의심되는 질환을 말씀드리기 어려워요"로 안내한다(오류 아님).
   - `recommended_department`가 null이면 병원 찾기 버튼을 숨긴다.
 - 세션은 30분(서버 Redis TTL) 뒤 만료된다. `SESSION_NOT_FOUND`면 새 상담을 안내한다.
 
@@ -64,16 +63,13 @@
 - 지도 키가 없거나, 인증(키·등록 URL) 또는 로드에 실패하면 대체 약도를 보여 준다.
 
 ### F3. 약봉투 복약 안내 (`/medication`)
-- 3단계: 사진 올리기 → 약 이름 확인 → 복약 안내.
+- 2단계: 사진 올리기 → 복약 안내. 새 명세에는 약 이름 확인·안내 API가 없고, 스캔 응답에 약별 안내가 바로 들어 있다.
 - 업로드는 multipart 필드 `file` 한 장. 지원 형식·최대 크기는 미정(TBD)이라 프론트에서 제한하지 않는다.
-- 약별 매칭 결과(`match_status`):
-  - `MATCHED`: 미리 골라 두되 사용자가 확인한다.
-  - `AMBIGUOUS`: 후보(약 이름·제조사) 중 직접 고른다. 고르기 전에는 안내를 만들 수 없다.
-  - `NOT_FOUND`: "맞는 약을 찾지 못해 안내에서 뺐어요"(오류 아님).
-  - 모든 약에서 "이 중에 없어요"로 뺄 수 있다.
-- 사용자가 고른 `item_seq`만 복약 안내 API로 보낸다.
-- 약별 카드: 쉬운 설명(`summary`) / 자세한 공식 정보(효능·먹는 법·주의사항 목록·출처). 두 영역을 나눠 보여 준다.
-- 음성: 약별 `audio_status=READY`이고 `audio_url`이 있을 때 재생한다. 없으면 **임시로** 브라우저 음성 합성으로 읽어 준다(네이버 클라우드 CLOVA Voice 적용 후 제거, 9-3).
+- 응답 `status`(`COMPLETED`·`NEEDS_CONFIRMATION`·`INCOMPLETE`·`OCR_ONLY`·`PARTIAL`)의 정확한 의미는 명세에 없어 화면 분기에 쓰지 않는다(8장).
+- 약별 카드 위에 "실제 복용법은 약봉투와 약사 안내를 따르세요." 안내를 한 번 보여 준다. 공공데이터 용법은 허가된 모든 경우를 나열한 글이라 실제 처방과 다를 수 있기 때문이다.
+- 약별 카드(`medications[]`): 이름, 효능·허가된 일반 용법(`how_to_take`)·주의할 점·이상반응·보관 방법(`description`, 값이 없으면 "정보가 없어요"), 서버 `warning`. 서버 문구에 섞인 HTML 태그는 걷어 내고 글자만 보여 준다. `guidance_status=UNAVAILABLE`이거나 다섯 항목이 모두 비어 있으면 "안내 정보를 찾지 못했어요, 약사에게 물어보세요".
+- 확실히 찾지 못한 약(`uncertain_medications[]`)은 읽은 글자·이유·서버 안내 문구(`action_message`)를 그대로 보여 준다(오류 아님).
+- 음성: 서버 음성(`audio_*`)이 명세에서 빠졌다. **임시로** 브라우저 음성 합성으로 효능만 읽어 준다. 허가된 일반 용법은 실제 처방과 헷갈릴 수 있어 읽지 않는다(네이버 클라우드 CLOVA Voice 적용 후 제거, 10-3).
 
 ### 공통 (모든 화면)
 - 하단 고정 문구: **"의학적 진단이 아닌 진료 안내입니다."** (기술문서 2-5)
@@ -83,16 +79,15 @@
 
 ## 5. 화면과 API 매핑
 
-기준: Notion「MediNavi — Backend API Documentation」. 기본 경로 `/api/v1`.
+기준: 백엔드 Swagger(`/docs`, `/openapi.json`). 기본 경로 `/api/v1`.
 
 | 화면 | 메서드·경로 | 요청 | 응답 `data` (주요 필드) |
 | --- | --- | --- | --- |
-| `/chat` | `POST /api/v1/chat/sessions` (201) | `{ initial_symptom }` | `session_id`, `status`, `turn_count`, `next_question` |
-| `/chat` | `POST /api/v1/chat/sessions/{id}/messages` (200 / 비동기 분석 접수 시 202) | `{ question_id, message }` | `status`, `turn_count`, `assistant_message`, `next_question`, `emergency_guidance`, `retry_after_seconds` |
-| `/chat` | `GET /api/v1/chat/sessions/{id}/result` | - | `status`, `assessment_status`, `result{ suspected_diseases, recommended_department, reason, references, medical_disclaimer }`, `retry_after_seconds` |
+| `/chat` | `POST /api/v1/chat/sessions` (201) | `{ initial_message }` | `session_id`, `status`, `next_question`(문자열), `turn_count`, `expires_at`, `emergency_message` |
+| `/chat` | `POST /api/v1/chat/sessions/{id}/messages` (200) | `{ client_message_id, message }` | `status`, `next_question`, `turn_count`, `collected_symptoms`, `result_available`, `emergency_message` |
+| `/chat` | `GET /api/v1/chat/sessions/{id}/result` | - | `status`, `assessment_status`, `analysis_source`, `symptom_summary`, `suspected_diseases[]`, `recommended_department`, `references[]`(문자열), `medical_disclaimer`, `failure_code` |
 | `/hospitals` | `GET /api/v1/hospitals/open` | `department, latitude, longitude, radius_km, open_now` (모두 필수) | `as_of`, `total_count`, `hospitals[]{ hospital_id, name, address, latitude, longitude, department, phone, open_hours[], is_open, distance_km }` |
-| `/medication` | `POST /api/v1/medications/scan` | multipart `file` | `recognized_text`, `medications[]{ item_seq, item_name, match_status, candidates[] }` |
-| `/medication` | `POST /api/v1/medications/guide` | `{ medications: [{ item_seq }] }` | `medications[]{ efficacy, usage, cautions[], official_source, summary, audio_status, audio_url }` |
+| `/medication` | `POST /api/v1/medications/scan` | multipart `file` | `status`, `identified_count`, `uncertain_count`, `medications[]{ item_seq, name, description{ purpose, how_to_take, precautions, side_effects, storage }, guidance_status, warning }`, `uncertain_medications[]{ recognized_name, reason, action_message }` |
 
 - 모든 응답은 `{ code, message, data }`. `src/api/client.ts`가 `data`만 꺼내고, 실패(4xx/5xx)는 `ApiError(status, code, message, fieldErrors, data)`로 던진다.
 - 문진 진행 상태(`data.status`)는 HTTP status·응답 `code`와 별개다.
@@ -116,14 +111,14 @@
 | 항목 | 문서 | 이 저장소 | 이유 |
 | --- | --- | --- | --- |
 | 화면 구현 | 기술문서·API 문서: Streamlit | React + Vite | 팀 합의. 바뀌면 이 문서를 먼저 고친다 |
-| 문진 진행 표시 | 기술문서 2-2: 슬롯 7종 진행 패널, 최대 5턴 | 처음 증상·답한 질문 수·단계만 표시 | API 응답에 슬롯 정보가 없고 최대 턴은 TBD |
-| 강도 0~10 버튼·슬롯별 빠른 답변 | 기술문서(초기 화면 설계) | 제거. 서버 `options`만 버튼으로 표시 | 프론트가 질문 종류를 판단하지 않기 위함 |
+| 문진 진행 표시 | 기술문서 2-2: 슬롯 7종 진행 패널, 최대 5턴 | 처음 증상·답한 질문 수·단계와 서버 `collected_symptoms` 중 값이 있는 것 | 최대 턴은 TBD |
+| 강도 0~10 버튼·슬롯별 빠른 답변 | 기술문서(초기 화면 설계) | 제거. 새 명세에 선택지(`options`)가 없어 직접 입력만 받는다 | 프론트가 질문 종류를 판단하지 않기 위함 |
 | 결과 없을 때 확대 검색 | 초기 PRD: 서버가 응급실·가정의학과로 넓힘(`widened`) | 서버 확대 없음. 진료 중 0건이면 프론트가 `open_now=false`로 다시 요청해 진료 시간이 아닌 병원과 진료 시간을 안내 | API 계약에 대체 병원 자동 반환이 없음. 사용자 결정(2026-11-21). `open_now=false` 의미를 Notion 5.2에 추가 |
 | 위치 권한 거부 시 | API 문서 5.7: 권한이 허용된 경우에만 좌표 전달 | 서울시청 좌표로 검색하고 화면에 알림 | 사용자 결정. 권한이 없어도 병원을 볼 수 있게 |
 | 주소 입력 위치 지정 | API 문서에 없음(5.7은 `latitude`·`longitude`만 받음) | 다음 우편번호 서비스로 주소를 고르고, 지도 SDK `geocoder`로 좌표를 구한 뒤 기존 좌표 쿼리로 요청 | 사용자 결정. 위치 권한이 없는 고령 사용자도 동네 이름으로 위치를 정할 수 있게. 백엔드 API 변경 없음. REST 지오코딩(Client Secret)은 프론트에서 쓰지 않는다. 외부 서비스(카카오) 스크립트가 하나 늘어난다 |
 | 진료과 선택 | API 문서: `department` 하나(필수) | 여러 개 선택, 진료과마다 요청해 합침 | 사용자 결정. 추천 진료과 외 다른 과도 함께 보기 위함. 백엔드가 복수 진료과를 지원하면 한 번 요청으로 바꾼다 |
-| 분석 결과 대기 | API 문서: 폴링 최대 시간 TBD | 최대 60초 후 수동 확인 버튼 | 분석 작업이 멈췄을 때 무한 대기 방지. 실측 후 조정 |
-| 음성 안내 대체 | API 문서: READY일 때만 재생, 아니면 음성 없음 | READY가 아니면 브라우저 음성 합성 | 고령 사용자 배려. CLOVA Voice 적용 시 제거 |
+| 분석 결과 대기 | 명세에 폴링 간격·최대 시간 없음 | 2초 간격,  최대 60초 후 수동 확인 버튼 | 분석 작업이 멈췄을 때 무한 대기 방지. 실측 후 조정 |
+| 음성 안내 대체 | 새 명세에 음성 필드 없음 | 브라우저 음성 합성으로 효능만 읽기 | 고령 사용자 배려. CLOVA Voice 적용 시 제거 |
 
 ## 8. 미확정 사항 (백엔드 계약 TBD)
 
@@ -134,14 +129,15 @@
 | 인증·세션 소유권 | 요청 헤더 `Authorization` | 보내지 않음 |
 | 운영·테스트 URL | `VITE_API_BASE_URL` | 비우면 `/api/v1` 프록시 |
 | 최대 문진 턴 | 진행 표시 | 표시하지 않음 |
-| 분석 비동기 여부·폴링 간격·최대 대기 | Chat `ANALYZING` | 서버 `retry_after_seconds`(없으면 2초), 최대 60초 |
-| Idempotency-Key 지원 | 메시지 재전송 | 자동 재전송 안 함 |
-| 입력 길이 제한 | 증상·답변 입력 | 제한 없음, 서버 검증 오류 메시지 표시 |
+| 분석 폴링 간격·최대 대기 | Chat `ANALYZING` | 2초 간격, 최대 60초 |
+| 중복 전송 처리 | 메시지 재전송 | `client_message_id`로 서버가 중복 처리하나 자동 재전송은 하지 않음 |
+| 입력 길이 제한 | 증상·답변 입력 | 명세상 1~1000자. 입력창 제한 없이 서버 검증 오류 메시지 표시 |
 | 병원 반경 허용 범위, 진료과 표준값 | 거리·진료과 선택지 | 1·3·5km, 진료과 10종 고정 목록 |
 | 복수 진료과 검색 지원 | 진료과 여러 개 선택 시 요청 수 | 진료과마다 1회씩 요청 (진료 중 0건이면 `open_now=false`로 진료과마다 1회 더) |
 | 공휴일 진료 시간 | `open_hours`는 요일별만 있음 | 표시하지 않음. 서버 `is_open`만 따름 |
 | 이미지 형식·최대 크기 | 업로드 | `accept="image/*"`만, 크기 제한 없음 |
-| 음성 URL 만료·형식 | `<audio>` | 받은 URL 그대로 재생 |
+| 스캔 `status` 5종 의미 | 복약 화면 분기 | 분기에 쓰지 않고 카드·미확인 약만 표시 |
+| 병원 API의 `open_now=false` 의미 | 진료 중 0건 안내 | 새 명세에 설명이 없다. 백엔드에 확인 필요 |
 
 ## 9. 로드맵
 
@@ -150,6 +146,7 @@
 | v1 | 틀·디자인, 목업 데이터로 3개 흐름 동작 | 완료 |
 | v1.1 | 백엔드 API 계약(Notion) 반영: envelope·상태별 문진·새 DTO, 목업을 새 계약 형태로 교체 | 완료 |
 | v1.2 | 실제 백엔드 연결 확인, **목업 제거**(10장), 지도 키 적용, CLOVA Voice 적용 | 예정 |
+| v1.3 | 새 Swagger 명세 반영(문진 DTO 단순화, 복약 안내 API 통합) | 완료 |
 | v2 | TBD 항목 확정 반영(인증, 최대 턴, 업로드 제한 등) | 예정 |
 | v3 | 음성 증상 입력(CLOVA Speech), 다국어(Papago), 복약 알림 | 계획 |
 
@@ -163,9 +160,9 @@
 
 | 위치 | 내용 |
 | --- | --- |
-| `src/api/mock.ts` | 목업 본체. 고정 질문 4개(선택형 포함), 목업 전용 응급 키워드, 분석 3초 대기(ANALYZING), 결과, 병원 4곳, 약 후보(MATCHED·AMBIGUOUS·NOT_FOUND), 복약 안내 |
+| `src/api/mock.ts` | 목업 본체. 고정 질문 4개, 목업 전용 응급 키워드, 분석 3초 대기(ANALYZING), 결과, 병원 5곳, 복약 안내 카드·미확인 약 |
 | `src/api/client.ts` | `USE_MOCK` 상수, `sleep` (목업 전용) |
-| `src/api/index.ts` | 각 API 함수 첫 줄의 `if (USE_MOCK) return mock.…` 6곳, `import * as mock` |
+| `src/api/index.ts` | 각 API 함수 첫 줄의 `if (USE_MOCK) return mock.…` 5곳, `import * as mock` |
 | `.env.local`, `.env.example` | `VITE_USE_MOCK` 항목 |
 | `src/vite-env.d.ts` | `VITE_USE_MOCK` 타입 선언 |
 | `README.md` | 환경변수 표의 `VITE_USE_MOCK` 행 |
@@ -173,7 +170,7 @@
 ### 10-2. 제거 절차
 
 1. `src/api/mock.ts` 삭제.
-2. `src/api/index.ts`에서 `import * as mock from './mock'`, `USE_MOCK` import, 각 함수의 `if (USE_MOCK) …` 줄 6개 삭제.
+2. `src/api/index.ts`에서 `import * as mock from './mock'`, `USE_MOCK` import, 각 함수의 `if (USE_MOCK) …` 줄 5개 삭제.
 3. `src/api/client.ts`에서 `USE_MOCK` 상수와 `sleep` 삭제.
 4. `.env.local`, `.env.example`, `src/vite-env.d.ts`, `README.md`에서 `VITE_USE_MOCK` 삭제.
 5. `npm run build`로 타입 오류가 없는지 확인한 뒤, `grep -rni "mock" src` 결과가 비어 있는지 확인.
@@ -184,6 +181,6 @@
 | --- | --- | --- |
 | `src/pages/Home.tsx`의 `ConversationPreview` | 홈의 상담 예시 카드(하드코딩) | 실제 데이터가 아닌 **설명용 예시**. 유지하되 숫자가 사실처럼 보이지 않게 주의 |
 | `src/components/NaverMap.tsx`의 `FallbackMap` | 지도 키 없을 때 약도 | 목업 아님. 개발·장애 시 대체 화면이라 유지 |
-| `src/pages/Medication.tsx`의 `TtsPlayer` 브라우저 음성 합성 | 서버 음성이 없을 때 대체 | **CLOVA Voice 적용 후 제거** |
+| `src/pages/Medication.tsx`의 `TtsPlayer` 브라우저 음성 합성 | 서버 음성이 명세에 없어 쓰는 대체 | **CLOVA Voice 적용 후 제거** |
 | `src/pages/Chat.tsx`의 `POLL_LIMIT_MS`(60초) | 분석 결과 최대 대기 | 백엔드 실측 후 조정 |
 | `src/pages/Hospitals.tsx`의 `DEPTS`, `RADII_KM` | 진료과·반경 선택지 | 백엔드 진료과 표준값·반경 범위 확정 시 맞춤 |
