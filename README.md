@@ -13,7 +13,7 @@ npm run dev                  # http://localhost:5173
 | 환경변수 | 설명 |
 | --- | --- |
 | `VITE_USE_MOCK` | `true`면 백엔드 없이 목업 데이터로 동작 (임시, 백엔드 연동 후 제거) |
-| `VITE_API_BASE_URL` | FastAPI 서버 주소(origin)만. 예: `http://10.0.0.5:8000`. 비우면 같은 출처의 `/api/v1` → 개발 서버가 `localhost:8000`으로 프록시 |
+| `VITE_API_BASE_URL` | FastAPI 서버 주소(origin)만. 예: `http://10.0.0.5:8000`. 비우면 같은 출처의 `/api/v1` → 개발 서버가 팀 공용 백엔드(`vite.config.ts`의 `proxy` 대상)로 프록시 |
 | `VITE_NCP_MAP_CLIENT_ID` | NCP Maps Client ID(지도·주소→좌표 변환). 비우면 약도(대체 지도) 표시, "주소로 찾기" 숨김. NCP 콘솔 Web 서비스 URL에 `http://localhost:5173` 등록 필요. Client Secret은 프론트에 넣지 않음 |
 
 ## 화면

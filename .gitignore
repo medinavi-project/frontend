@@ -18,6 +18,12 @@ coverage/
 .env.*
 !.env.example
 
+# ===== Caches / temp =====
+.eslintcache
+.cache/
+*.tmp
+*.bak
+
 # ===== Logs =====
 logs/
 *.log
