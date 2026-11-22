@@ -681,12 +681,17 @@
   position: absolute;
   opacity: 0;
 }
-.optset span {
+/* 고르면 체크 표시(0.9em + 간격 0.3em)가 생기고 글자가 굵어진다.
+   버튼 너비가 바뀌어 줄이 밀리지 않게, 안 골랐을 때 그만큼 양옆 여백을 미리 더 주고
+   글자 칸은 굵은 글자 너비로 잡아 둔다 */
+.optset > label > span {
+  --pad: 0.95rem;
+  --chk: 1.2em;
   display: inline-flex;
   align-items: center;
   gap: 0.3em;
   min-height: 44px;
-  padding: 0 0.95rem;
+  padding: 0 calc(var(--pad) + var(--chk) / 2);
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-pill);
   background: var(--surface);
@@ -694,10 +699,21 @@
     border-color 160ms var(--ease),
     background 160ms var(--ease);
 }
+.optset__txt {
+  display: inline-grid;
+}
+.optset__txt::after {
+  content: attr(data-text);
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  font-weight: 600;
+}
 .optset label:hover span {
   border-color: var(--ink-soft);
 }
 .optset input:checked + span {
+  padding-inline: var(--pad);
   border-color: var(--rx);
   background: var(--rx-wash);
   color: var(--rx-deep);
@@ -843,6 +859,7 @@
 .nmark.is-selected {
   background: var(--rx-deep);
   color: var(--paper);
+  transform: scale(1.15);
 }
 .nmark__name,
 .nme__label {
@@ -938,12 +955,15 @@
 .hlist__more {
   width: 100%;
 }
+/* 병원 목록: 따로 떨어진 카드 대신 한 묶음 안에서 줄로 나눈다 */
 .hlist ul {
   list-style: none;
   padding: 0;
   margin: 0;
-  display: grid;
-  gap: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  overflow: hidden;
+  background: var(--surface);
 }
 .hlist__notice {
   max-width: none;
@@ -952,47 +972,53 @@
   padding: 0.75rem 1rem;
 }
 .hcard {
-  --num: 1.9rem; /* 번호 지름. 아래 줄들을 이름 시작선에 맞춘다 */
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-m);
-  padding: 1rem 1.15rem;
+  --num: 2rem; /* 번호 지름. 아래 줄들을 이름 시작선에 맞춘다 */
+  --indent: calc(var(--num) + 0.9rem);
   display: grid;
   gap: 0.6rem;
-  transition:
-    border-color 160ms var(--ease),
-    box-shadow 160ms var(--ease);
+  padding: 1.1rem 1.25rem;
+  transition: background 160ms var(--ease);
+}
+.hcard + .hcard {
+  border-top: 1px solid var(--line);
 }
 .hcard:hover {
-  border-color: var(--line-strong);
-  box-shadow: var(--shadow-sm);
+  background: var(--tint);
 }
+/* 지도에서 고른 병원: 왼쪽 파란 띠와 옅은 파란 바탕 */
 .hcard.is-selected {
-  border-color: var(--rx);
-  box-shadow:
-    inset 0 0 0 1px var(--rx),
-    var(--shadow-sm);
+  background: var(--rx-wash);
+  box-shadow: inset 4px 0 0 var(--rx);
 }
 .hcard__main {
   display: grid;
   grid-template-columns: var(--num) minmax(0, 1fr);
-  gap: 0.75rem;
+  gap: 0.9rem;
   align-items: start;
+  width: 100%;
   text-align: left;
   border: 0;
   background: none;
   padding: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.hcard__main:focus-visible {
+  outline: 3px solid var(--rx);
+  outline-offset: 4px;
+  border-radius: var(--radius-s);
 }
 .hcard__info {
   display: grid;
-  gap: 0.35rem;
+  gap: 0.45rem;
   min-width: 0;
 }
 .hcard__top {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  gap: 0.5rem;
+  gap: 0.75rem;
 }
 .hcard__name {
   font-size: var(--step-1);
@@ -1001,8 +1027,7 @@
 }
 .hcard__dist {
   flex: none;
-  font-weight: 600;
-  color: var(--ink-soft);
+  font-weight: 700;
 }
 .hcard__num {
   display: grid;
@@ -1022,23 +1047,131 @@
   align-items: center;
   font-size: var(--step--1);
 }
-.hcard__depts {
-  color: var(--ink-soft);
-}
-.hcard__addr {
+.hcard__depts,
+.hcard__addr,
+.hcard__today {
   font-size: var(--step--1);
   color: var(--ink-soft);
 }
-.hcard__week,
-.hcard__call {
-  margin-left: calc(var(--num) + 0.75rem);
+
+/* 오늘 진료 시간 막대: 하루(기본 8시~22시) 중 진료 시간을 칠하고 지금 시각에 세로선 */
+.daybar {
+  display: grid;
+  gap: 0.3rem;
+  padding-top: 0.15rem;
 }
-.hcard__call {
-  justify-self: start;
+.daybar__track {
+  position: relative;
+  height: 10px;
+  border-radius: var(--radius-pill);
+  background: var(--tint);
+  box-shadow: inset 0 0 0 1px var(--line);
 }
-span.hcard__call {
+.hcard:hover .daybar__track,
+.hcard.is-selected .daybar__track {
+  background: var(--surface);
+}
+.daybar__fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--rx) 40%, var(--surface));
+}
+.daybar__fill--closed {
+  background: color-mix(in srgb, var(--ink-soft) 30%, var(--surface));
+}
+.daybar__now {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--ink);
+}
+.daybar__labels {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: var(--step--1);
+  color: var(--ink-soft);
+}
+.daybar__nowtext {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* 전화 걸기 · 요일별 진료 시간 */
+.hcard__acts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin-left: var(--indent);
+}
+.hcard__nophone {
   font-size: var(--step--1);
 }
+.hcard__weekbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45em;
+  min-height: 44px;
+  padding: 0 0.4em;
+  border: 0;
+  background: none;
+  color: var(--rx-deep);
+  font: inherit;
+  font-size: var(--step--1);
+  font-weight: 600;
+  cursor: pointer;
+}
+/* 펼칠 수 있다는 표시: 아래 화살표, 펼치면 위로 */
+.hcard__weekbtn::after {
+  content: '';
+  width: 0.45em;
+  height: 0.45em;
+  margin-top: -0.2em;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg);
+  transition: transform 160ms var(--ease);
+}
+.hcard__weekbtn[aria-expanded='true']::after {
+  margin-top: 0.2em;
+  transform: rotate(-135deg);
+}
+.hcard__weekbtn:focus-visible {
+  outline: 3px solid var(--rx);
+  outline-offset: 2px;
+  border-radius: var(--radius-s);
+}
+.hcard__week {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+  gap: 0.25rem 1rem;
+  margin: 0 0 0 var(--indent);
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--line);
+  font-size: var(--step--1);
+}
+.hcard__week > div {
+  display: flex;
+  gap: 0.6rem;
+}
+.hcard__week dt {
+  font-weight: 600;
+  min-width: 1.2em;
+}
+.hcard__week dd {
+  margin: 0;
+}
+.hcard__week .is-today {
+  font-weight: 700;
+  color: var(--ink);
+}
+
 /* 진료 시간이 아닌 병원: 번호를 회색 테두리로 (지도 핀과 같게) */
 .hcard.is-closed .hcard__num,
 .map__pin.is-closed,
@@ -1058,63 +1191,51 @@ span.hcard__call {
   background: var(--rx-deep);
   color: var(--paper);
 }
-.hcard__week {
-  border-top: 1px solid var(--line);
+
+/* 지도 위 범례와 "내 위치로 지도 맞추기" */
+.map__legend {
+  position: absolute;
+  top: 0.75rem;
+  left: 0.75rem;
+  z-index: 10;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.9rem;
+  max-width: calc(100% - var(--tap) - 2.5rem);
+  margin: 0;
+  padding: 0.4rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  font-size: var(--step--1);
+  list-style: none;
 }
-.hcard__week summary {
+.map__legend li {
   display: inline-flex;
   align-items: center;
   gap: 0.4em;
-  min-height: 44px;
-  cursor: pointer;
-  list-style: none;
-  color: var(--rx-deep);
-  font-weight: 600;
-  font-size: var(--step--1);
 }
-.hcard__week summary::-webkit-details-marker {
-  display: none;
+.map__key {
+  flex: none;
+  width: 0.9em;
+  height: 0.9em;
+  border-radius: 50%;
+  background: var(--rx);
 }
-/* 펼칠 수 있다는 표시: 아래 화살표, 펼치면 위로 */
-.hcard__week summary::after {
-  content: '';
-  width: 0.45em;
-  height: 0.45em;
-  margin-top: -0.2em;
-  border-right: 2px solid currentColor;
-  border-bottom: 2px solid currentColor;
-  transform: rotate(45deg);
-  transition: transform 160ms var(--ease);
+.map__key--closed {
+  background: var(--surface);
+  box-shadow: inset 0 0 0 2px var(--ink-soft);
 }
-.hcard__week[open] summary::after {
-  margin-top: 0.2em;
-  transform: rotate(-135deg);
+.map__key--ring {
+  background: none;
+  border: 2px dashed var(--rx);
 }
-.hcard__week summary:focus-visible {
-  outline: 3px solid var(--rx);
-  outline-offset: 2px;
-}
-.hcard__week dl {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
-  gap: 0.25rem 1rem;
-  margin: 0 0 0.5rem;
-  font-size: var(--step--1);
-}
-.hcard__week dl > div {
-  display: flex;
-  gap: 0.6rem;
-}
-.hcard__week dt {
-  font-weight: 600;
-  min-width: 1.2em;
-}
-.hcard__week dd {
-  margin: 0;
-}
-.hcard__week .is-today {
-  font-weight: 700;
-  color: var(--ink);
+.map__recenter {
+  position: absolute;
+  right: 0.75rem;
+  bottom: 0.75rem;
+  z-index: 10;
+  box-shadow: var(--shadow-sm);
 }
 
 /* ── 복약 ── */
@@ -1602,15 +1723,19 @@ span.hcard__call {
     grid-template-columns: 1fr 1fr;
     width: 100%;
   }
-  .optset span {
-    padding: 0 0.8rem;
+  .optset > label > span {
+    --pad: 0.8rem;
+  }
+  /* 좁은 화면: 번호 들여쓰기를 없애고 전화 버튼을 넓게 */
+  .hcard {
+    padding-inline: 1rem;
   }
   .hcard__week,
-  .hcard__call {
+  .hcard__acts {
     margin-left: 0;
   }
-  a.hcard__call {
-    justify-self: stretch;
+  .hcard__acts .btn {
+    flex: 1 1 100%;
   }
   .emergency {
     grid-template-columns: 1fr;

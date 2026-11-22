@@ -47,3 +47,16 @@ export function formatDateTime(iso: string): string {
 export function formatScore(n: number): string {
   return `${n}점 (0~10점 중)`;
 }
+
+/** "09:30" → 570 (자정부터 분). 형식이 다르면 null. "24:00" 은 1440 */
+export function toMinutes(t?: string | null): number | null {
+  const m = t?.match(/^(\d{1,2}):(\d{2})/);
+  if (!m) return null;
+  const v = Number(m[1]) * 60 + Number(m[2]);
+  return v >= 0 && v <= 1440 ? v : null;
+}
+
+/** 시각 표시: Date → "15:05" (24시간) */
+export function formatClock(d: Date): string {
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}

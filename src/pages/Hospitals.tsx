@@ -1,11 +1,21 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { errorMessage, getOpenHospitals, type Hospital } from '../api';
+import { errorMessage, getOpenHospitals, type Hospital, type OpenHours } from '../api';
 import AddressPicker from '../components/AddressPicker';
 import Icon from '../components/Icon';
 import NaverMap, { type CenterKind } from '../components/NaverMap';
 import { DEFAULT_COORDS, useGeolocation, type Coords, type GeoError } from '../hooks/useGeolocation';
-import { DAY_LABEL, WEEK, formatDateTime, formatDistance, formatHours, todayHours, todayKey } from '../utils/hours';
+import {
+  DAY_LABEL,
+  WEEK,
+  formatClock,
+  formatDateTime,
+  formatDistance,
+  formatHours,
+  toMinutes,
+  todayHours,
+  todayKey,
+} from '../utils/hours';
 import { hasMapKey, reverseGeocode, searchAddress } from '../utils/naverMaps';
 
 /** 위치를 못 받은 이유와 해결 방법 */
@@ -86,6 +96,37 @@ const byDistance = (list: MergedHospital[]) => [...list].sort((a, b) => a.distan
 const CLOSED_PREVIEW = 5;
 const CLOSED_PREVIEW_NO_OPEN = 10;
 
+/** 막대가 기본으로 보여 주는 하루 범위 (시). 진료 시간이 더 이르거나 늦으면 넓힌다 */
+const BAR_FROM = 8 * 60;
+const BAR_TO = 22 * 60;
+
+/** 오늘 진료 시간을 하루 막대로: 진료 시간은 칠하고, 지금 시각에 세로선을 긋는다 */
+function DayBar({ hours, now, open }: { hours: OpenHours; now: Date; open: boolean }) {
+  const start = toMinutes(hours.open_time);
+  const rawEnd = toMinutes(hours.close_time);
+  if (start === null || rawEnd === null) return null;
+  const end = rawEnd <= start ? 1440 : rawEnd; // 자정을 넘기면 오늘 안에서는 자정까지로 그린다
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  const from = Math.min(BAR_FROM, start, nowMin);
+  const to = Math.max(BAR_TO, end, nowMin);
+  const pct = (m: number) => `${((m - from) / (to - from)) * 100}%`;
+  return (
+    <span className="daybar">
+      <span className="daybar__track" aria-hidden="true">
+        <span
+          className={open ? 'daybar__fill' : 'daybar__fill daybar__fill--closed'}
+          style={{ left: pct(start), width: `${((end - start) / (to - from)) * 100}%` }}
+        />
+        <span className="daybar__now" style={{ left: pct(nowMin) }} />
+      </span>
+      <span className="daybar__labels">
+        <span>오늘 {formatHours(hours)}</span>
+        <span className="daybar__nowtext">지금 {formatClock(now)}</span>
+      </span>
+    </span>
+  );
+}
+
 export default function Hospitals() {
   const [params, setParams] = useSearchParams();
   // ?dept=내과&dept=외과 처럼 여러 개. 문진 결과에서 넘어온 진료과가 첫 번째(기본)다.
@@ -121,6 +162,8 @@ export default function Hospitals() {
   const [reload, setReload] = useState(0);
   // 모바일에서 접어 둔 찾는 조건을 펼쳤는지
   const [condOpen, setCondOpen] = useState(false);
+  // 요일별 진료 시간을 펼친 병원
+  const [weekOpen, setWeekOpen] = useState<Set<string>>(() => new Set());
 
   const setDepts = (next: string[]) => {
     const p = new URLSearchParams(params);
@@ -166,7 +209,7 @@ export default function Hospitals() {
     setLoading(true);
     void (async () => {
       // 서버는 가까운 순으로 20곳에서 자르므로, open_now=false 한 번만 받으면 조금 먼 진료 중 병원이 잘릴 수 있다.
-      // 그래서 진료 중(true)과 전체(false)를 동시에 받아 합친다 (FRONTEND_OPEN_CLOSED_LIST.md, PRD F2)
+      // 그래서 진료 중(true)과 전체(false)를 동시에 받아 합친다 (PRD F2)
       const [open, all] = await Promise.all([
         searchMerged(depts, center, radius, true),
         searchMerged(depts, center, radius, false),
@@ -206,6 +249,8 @@ export default function Hospitals() {
   const failMessage = data?.failMessage ?? allData?.failMessage ?? null;
   const asOf = data?.asOf ?? allData?.asOf ?? null;
   const nothing = !loading && !!data && !allFailed && shown.length === 0;
+  // 안내 문구 속 진료과: 고른 목록은 위 조건 패널에 이미 보이므로, 여러 개면 "고른 진료과"로 줄인다
+  const deptPhrase = depts.length === 1 ? depts[0] : '고른 진료과';
 
   const locate = async () => {
     const c = await geo.request();
@@ -259,13 +304,24 @@ export default function Hospitals() {
   const collapsible = depts.length > 0 && !!center && !geoNote && !addrError && !addrOpen;
   const folded = collapsible && !condOpen;
 
-  /** 병원 카드. num 은 지도 핀과 같은 번호 */
+  const now = asOf ? new Date(asOf) : new Date();
+  const toggleWeek = (id: string) =>
+    setWeekOpen((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  /** 병원 한 줄. num 은 지도 핀과 같은 번호 */
   const renderCard = (h: MergedHospital, num: number) => {
-    const hours = todayHours(h);
-    const todayRaw = h.open_hours.find((o) => o.day_of_week === todayKey());
+    const hours = todayHours(h, now);
+    const todayRaw = h.open_hours.find((o) => o.day_of_week === todayKey(now));
+    const weekId = `week-${h.hospital_id}`;
+    const showWeek = weekOpen.has(h.hospital_id);
     return (
       <li key={h.hospital_id} id={`h-${h.hospital_id}`} className={['hcard', !h.is_open && 'is-closed', h.hospital_id === selected && 'is-selected'].filter(Boolean).join(' ')}>
-        <button type="button" className="hcard__main" onClick={() => setSelected(h.hospital_id)}>
+        <button type="button" className="hcard__main" onClick={() => setSelected(h.hospital_id)} aria-pressed={h.hospital_id === selected}>
           <span className="hcard__num" aria-hidden="true">
             {num}
           </span>
@@ -282,39 +338,45 @@ export default function Hospitals() {
               ) : (
                 <span className="badge badge--muted">진료 시간 아님</span>
               )}
-              {!h.is_open && (
-                <span className="muted">
-                  {h.open_hours.length ? `오늘 ${formatHours(todayRaw)}` : '진료 시간 정보가 없어요'}
-                </span>
-              )}
               <span className="hcard__depts">{h.departments.join(', ')}</span>
             </span>
+            {hours ? (
+              <DayBar hours={hours} now={now} open={h.is_open} />
+            ) : (
+              <span className="hcard__today muted">
+                {h.open_hours.length ? `오늘 ${formatHours(todayRaw)}` : '진료 시간 정보가 없어요'}
+              </span>
+            )}
             <span className="hcard__addr">{h.address}</span>
           </span>
         </button>
-        {h.open_hours.length > 0 && (
-          <details className="hcard__week">
-            <summary>요일별 진료 시간</summary>
-            <dl>
-              {WEEK.map((day) => {
-                const o = h.open_hours.find((x) => x.day_of_week === day);
-                return (
-                  <div key={day} className={day === todayKey() ? 'is-today' : undefined}>
-                    <dt>{DAY_LABEL[day]}</dt>
-                    <dd>{o ? formatHours(o) : '정보 없음'}</dd>
-                  </div>
-                );
-              })}
-            </dl>
-          </details>
-        )}
-        {h.phone ? (
-          <a className="btn btn--ghost btn--sm hcard__call" href={`tel:${h.phone}`}>
-            <Icon name="phone" />
-            전화 걸기 {h.phone}
-          </a>
-        ) : (
-          <span className="muted hcard__call">전화번호 정보가 없어요</span>
+        <div className="hcard__acts">
+          {h.phone ? (
+            <a className="btn btn--sm" href={`tel:${h.phone}`}>
+              <Icon name="phone" />
+              전화 걸기 {h.phone}
+            </a>
+          ) : (
+            <span className="muted hcard__nophone">전화번호 정보가 없어요</span>
+          )}
+          {h.open_hours.length > 0 && (
+            <button type="button" className="hcard__weekbtn" aria-expanded={showWeek} aria-controls={weekId} onClick={() => toggleWeek(h.hospital_id)}>
+              요일별 진료 시간
+            </button>
+          )}
+        </div>
+        {showWeek && (
+          <dl className="hcard__week" id={weekId}>
+            {WEEK.map((day) => {
+              const o = h.open_hours.find((x) => x.day_of_week === day);
+              return (
+                <div key={day} className={day === todayKey(now) ? 'is-today' : undefined}>
+                  <dt>{DAY_LABEL[day]}</dt>
+                  <dd>{o ? formatHours(o) : '정보 없음'}</dd>
+                </div>
+              );
+            })}
+          </dl>
         )}
       </li>
     );
@@ -418,7 +480,9 @@ export default function Hospitals() {
                   <input type="checkbox" checked={on} onChange={() => toggleDept(d)} />
                   <span>
                     {on && <Icon name="check" size="0.9em" />}
-                    {d}
+                    <span className="optset__txt" data-text={d}>
+                      {d}
+                    </span>
                   </span>
                 </label>
               );
@@ -481,7 +545,7 @@ export default function Hospitals() {
           )}
           {nothing && (
             <p className="muted">
-              {formatDistance(radius)} 안에 {depts.join(', ')} 병원이 없어요.{' '}
+              {formatDistance(radius)} 안에 {deptPhrase} 병원이 없어요.{' '}
               {radius < RADII_KM[RADII_KM.length - 1] ? '거리를 넓히거나 다른 진료과도 골라 보세요.' : '다른 진료과도 골라 보세요.'}
             </p>
           )}
@@ -502,8 +566,7 @@ export default function Hospitals() {
             <>
               {openSorted.length === 0 && !openFailedAll && (
                 <p className="hlist__notice">
-                  {formatDistance(radius)} 안에 지금 진료 중인 {depts.join(', ')} 병원이 없어요. 가까운 병원의 진료 시간을 대신 보여
-                  드려요. 가기 전에 전화로 진료 여부를 확인해 주세요.
+                  {formatDistance(radius)} 안에 지금 진료 중인 {deptPhrase} 병원이 없어요. 가기 전에 전화로 진료 여부를 확인해 주세요.
                 </p>
               )}
               <div className={`hlist__head${openSorted.length > 0 ? ' hlist__head--closed' : ''}`}>

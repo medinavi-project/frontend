@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Hospital } from '../api/types';
 import type { Coords } from '../hooks/useGeolocation';
 import { hasMapKey, loadNaverMaps, onMapAuthFailure, type NaverNS } from '../utils/naverMaps';
+import { formatDistance } from '../utils/hours';
 import Icon from './Icon';
 
 /** me: 내 위치 · default: 위치 권한이 없어 쓰는 기본 위치 · custom: 사용자가 주소로 고른 위치 */
@@ -28,6 +29,28 @@ const FAIL_NOTE: Record<FailReason | 'nokey', string> = {
   auth: '지도를 불러오지 못해 간단한 약도로 보여 드려요.',
   load: '지도를 불러오지 못해 간단한 약도로 보여 드려요. 인터넷 연결을 확인해 주세요.',
 };
+
+/** 지도 위 범례: 핀 색과 점선 원이 무엇인지 */
+function Legend({ radiusKm }: { radiusKm?: number }) {
+  return (
+    <ul className="map__legend" aria-label="지도 표시 안내">
+      <li>
+        <span className="map__key" aria-hidden="true" />
+        진료 중
+      </li>
+      <li>
+        <span className="map__key map__key--closed" aria-hidden="true" />
+        진료 시간 아님
+      </li>
+      {radiusKm !== undefined && (
+        <li>
+          <span className="map__key map__key--ring" aria-hidden="true" />
+          {formatDistance(radiusKm)} 안
+        </li>
+      )}
+    </ul>
+  );
+}
 
 export default function NaverMap(props: Props) {
   const [failed, setFailed] = useState<FailReason | null>(null);
@@ -85,6 +108,7 @@ function DynamicMap({
   const map = useRef<NaverNS>(null);
   const markers = useRef(new Map<string, MarkerEntry>());
   const meMarker = useRef<NaverNS>(null);
+  const ring = useRef<NaverNS>(null);
   const [ready, setReady] = useState(false);
 
   // 마커 클릭·초기 선택 표시에서 최신 값을 쓰되, 지도와 마커를 다시 만들지는 않는다
@@ -120,6 +144,8 @@ function DynamicMap({
       entries.clear();
       meMarker.current?.setMap(null);
       meMarker.current = null;
+      ring.current?.setMap(null);
+      ring.current = null;
       map.current?.destroy();
       map.current = null;
     };
@@ -170,9 +196,28 @@ function DynamicMap({
     });
   }, [ready, center.lat, center.lng, centerKind]);
 
-  // 내 위치와 병원이 모두 보이도록 범위를 맞춘다. 병원이 없으면 검색 반경에 맞춘다
+  // 검색 반경을 점선 원으로 (범례의 "○km 안")
   useEffect(() => {
     if (!ready) return;
+    const naver = window.naver;
+    ring.current?.setMap(null);
+    ring.current = new naver.maps.Circle({
+      map: map.current,
+      center: new naver.maps.LatLng(center.lat, center.lng),
+      radius: radiusKm * 1000,
+      strokeColor: '#2251b3', // --rx (지도 SDK 는 CSS 변수를 못 읽는다)
+      strokeOpacity: 0.5,
+      strokeWeight: 2,
+      strokeStyle: 'shortdash',
+      fillOpacity: 0,
+      clickable: false,
+    });
+  }, [ready, center.lat, center.lng, radiusKm]);
+
+  // 내 위치와 병원이 모두 보이도록 범위를 맞춘다. 병원이 없으면 검색 반경에 맞춘다
+  const fitRef = useRef<() => void>(() => {});
+  fitRef.current = () => {
+    if (!map.current) return;
     const naver = window.naver;
     const me = new naver.maps.LatLng(center.lat, center.lng);
     if (hospitals.length === 0) {
@@ -182,8 +227,11 @@ function DynamicMap({
     }
     const bounds = new naver.maps.LatLngBounds(me, me);
     hospitals.forEach((h) => bounds.extend(new naver.maps.LatLng(h.latitude, h.longitude)));
-    map.current.fitBounds(bounds, { top: 70, right: 60, bottom: 50, left: 50 });
+    map.current.fitBounds(bounds, { top: 80, right: 70, bottom: 80, left: 50 });
     if (map.current.getZoom() > MAX_FIT_ZOOM) map.current.setZoom(MAX_FIT_ZOOM);
+  };
+  useEffect(() => {
+    if (ready) fitRef.current();
   }, [ready, hospitals, center.lat, center.lng, radiusKm]);
 
   const zoomBy = (delta: number) => map.current?.setZoom(map.current.getZoom() + delta, true);
@@ -191,6 +239,7 @@ function DynamicMap({
   return (
     <div className="map" role="region" aria-label="병원 위치 지도">
       <div ref={el} className="map__canvas" />
+      <Legend radiusKm={radiusKm} />
       <div className="map__zoom">
         <button type="button" onClick={() => zoomBy(1)} aria-label="지도 확대">
           <Icon name="plus" />
@@ -199,6 +248,12 @@ function DynamicMap({
           <Icon name="minus" />
         </button>
       </div>
+      {ready && (
+        <button type="button" className="btn btn--ghost btn--sm map__recenter" onClick={() => fitRef.current()}>
+          <Icon name="locate" />
+          {centerKind === 'me' ? '내 위치로 지도 맞추기' : '기준 위치로 지도 맞추기'}
+        </button>
+      )}
     </div>
   );
 }
@@ -243,6 +298,8 @@ function FallbackMap({ center, centerKind, hospitals, selectedId, onSelect, note
           </button>
         );
       })}
+      {/* 약도의 원은 실제 거리와 맞지 않아 범례에 넣지 않는다 */}
+      <Legend />
       <p className="map__note">{note}</p>
     </div>
   );
