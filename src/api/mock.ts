@@ -128,7 +128,7 @@ const week = (open: string, close: string, sat?: [string, string], sun?: [string
   });
 
 // 좌표 오프셋은 검색 중심 기준. 이름·전화·주소는 지어낸 예시.
-const HOSPITALS: (Omit<Hospital, 'latitude' | 'longitude' | 'department' | 'is_open'> & {
+const HOSPITALS: (Omit<Hospital, 'latitude' | 'longitude' | 'department' | 'departments' | 'is_open'> & {
   dLat: number;
   dLng: number;
   depts: string[];
@@ -152,16 +152,23 @@ function mockIsOpen(hours: OpenHours[], d = new Date()): boolean {
 
 export async function getOpenHospitals(q: HospitalQuery): Promise<HospitalList> {
   await sleep(500);
-  const hospitals: Hospital[] = HOSPITALS.filter((h) => h.depts.includes(q.department) && h.distance_km <= q.radius_km)
-    .map(({ dLat, dLng, depts: _d, ...h }) => ({
-      ...h,
-      latitude: q.latitude + dLat,
-      longitude: q.longitude + dLng,
-      department: q.department,
-      is_open: mockIsOpen(h.open_hours),
-    }))
-    // open_now=true 면 진료 중인 곳만, false 면 반경 안 모든 곳 (계약 5.2)
-    .filter((h) => !q.open_now || h.is_open);
+  const asked = [...new Set(q.department.split(',').map((d) => d.trim()).filter(Boolean))];
+  const hospitals: Hospital[] = HOSPITALS.filter((h) => h.distance_km <= q.radius_km)
+    .map(({ dLat, dLng, depts, ...h }) => {
+      const matched = asked.filter((d) => depts.includes(d));
+      return {
+        ...h,
+        latitude: q.latitude + dLat,
+        longitude: q.longitude + dLng,
+        department: matched[0] ?? '',
+        departments: matched,
+        is_open: mockIsOpen(h.open_hours),
+      };
+    })
+    .filter((h) => h.departments.length > 0)
+    // open_now=true 면 진료 중인 곳만, false 면 반경 안 모든 곳. 진료 중 먼저, 그다음 가까운 순 (명세 v1.1)
+    .filter((h) => !q.open_now || h.is_open)
+    .sort((a, b) => Number(b.is_open) - Number(a.is_open) || a.distance_km - b.distance_km);
   return { as_of: now(), source_updated_at: null, total_count: hospitals.length, hospitals };
 }
 
@@ -179,6 +186,9 @@ export async function scanMedication(_file: File): Promise<MedicationScan> {
         name: '(예시) 예시정A 500mg',
         guidance_status: 'AVAILABLE',
         warning: null,
+        // 목업에는 음성 파일이 없어 브라우저 음성으로 대체되는 경우를 보여 준다
+        audio_status: 'NOT_GENERATED',
+        audio_url: null,
         description: {
           purpose: '(목업) 효능을 쉽게 풀어 쓴 예시 설명이 들어갈 자리예요.',
           how_to_take: '(목업) 허가된 일반 용법 예시입니다.',
@@ -192,6 +202,8 @@ export async function scanMedication(_file: File): Promise<MedicationScan> {
         name: '(예시) 예시정B 100mg',
         guidance_status: 'PARTIAL',
         warning: '(목업) 일부 정보만 확인되어 약사에게 한 번 더 확인하세요.',
+        audio_status: 'NOT_GENERATED',
+        audio_url: null,
         description: { purpose: '(목업) 효능 예시입니다.', how_to_take: null, precautions: null, side_effects: null, storage: null },
       },
     ],

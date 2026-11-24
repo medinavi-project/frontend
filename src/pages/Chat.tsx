@@ -28,8 +28,8 @@ const GREETING = '안녕하세요. 어디가 어떻게 불편하세요?';
 /** 분석 결과를 자동으로 확인하는 최대 시간. 넘으면 멈추고 "결과 다시 확인하기"를 보여 준다 (백엔드 계약상 TBD) */
 const POLL_LIMIT_MS = 60_000;
 const DEFAULT_POLL_SEC = 2;
-/** 사용자 메시지 최대 수(첫 증상 포함). 5번째에는 서버가 반드시 문진을 끝낸다 (Notion 명세 v1) */
-const MAX_TURNS = 5;
+/** 사용자 메시지 최대 수(첫 증상 포함). 7번째에는 서버가 반드시 문진을 끝낸다 (명세 v1.1) */
+const MAX_TURNS = 7;
 
 /** 화면 단계: intro = 첫 증상 입력 전, ended = 세션 만료 등으로 더 진행할 수 없음 */
 type Phase = 'intro' | ChatStatus | 'ended';

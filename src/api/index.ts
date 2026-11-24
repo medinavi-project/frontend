@@ -1,4 +1,4 @@
-// 백엔드 API 5개 (기준: Swagger http://101.79.27.212:8000/docs). VITE_USE_MOCK=true 이면 목업으로 응답.
+// 백엔드 API (기준: MediNavi_API_명세서_v1.1.md, Swagger http://101.79.27.212:8000/docs). 음성(mp3)은 audio_url 을 <audio> 로 직접 재생한다. VITE_USE_MOCK=true 이면 목업으로 응답.
 import { request, USE_MOCK } from './client';
 import * as mock from './mock';
 import type {
@@ -34,7 +34,7 @@ export function getResult(sessionId: string): Promise<ChatResult> {
   return request(`/chat/sessions/${encodeURIComponent(sessionId)}/result`);
 }
 
-/** GET /hospitals/open — 진료과·위치·반경·현재 진료 조건으로 병원 검색 */
+/** GET /hospitals/open — 진료과(쉼표로 최대 5개)·위치·반경·현재 진료 조건으로 병원 검색 */
 export function getOpenHospitals(q: HospitalQuery): Promise<HospitalList> {
   if (USE_MOCK) return mock.getOpenHospitals(q);
   const params = new URLSearchParams({
@@ -55,5 +55,5 @@ export function scanMedication(file: File): Promise<MedicationScan> {
   return request('/medications/scan', { method: 'POST', body: form });
 }
 
-export { ApiError, NETWORK_ERROR, errorMessage } from './client';
+export { ApiError, NETWORK_ERROR, errorMessage, serverUrl } from './client';
 export * from './types';

@@ -1,7 +1,11 @@
 import type { FieldError } from './types';
 
 // VITE_API_BASE_URL 은 서버 주소(origin)만. 비우면 같은 출처의 /api/v1 → 개발 시 vite 프록시가 localhost:8000 으로 넘긴다.
-const BASE = `${import.meta.env.VITE_API_BASE_URL ?? ''}/api/v1`;
+const ORIGIN = import.meta.env.VITE_API_BASE_URL ?? '';
+const BASE = `${ORIGIN}/api/v1`;
+
+/** 서버가 돌려준 경로(예: 약 안내 음성 audio_url "/api/v1/medications/audio/…")를 요청할 수 있는 주소로 바꾼다 */
+export const serverUrl = (path: string) => (/^https?:\/\//.test(path) ? path : `${ORIGIN}${path}`);
 export const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true';
 
 /** 응답 code 로 분기한다. message 는 사용자에게 보여 주는 용도로만 쓴다. */

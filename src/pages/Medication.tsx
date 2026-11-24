@@ -1,9 +1,9 @@
-import { useEffect, useState, type ChangeEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react';
 import Icon from '../components/Icon';
-import { errorMessage, scanMedication, type MedicationCard, type MedicationScan } from '../api';
+import { errorMessage, scanMedication, serverUrl, type MedicationCard, type MedicationScan } from '../api';
 import { plainText } from '../utils/text';
 
-/** 서버가 받는 사진 형식·크기 (Notion 명세 v1 2026-11-22: JPG·PNG·WEBP, 최대 5MB) */
+/** 서버가 받는 사진 형식·크기 (명세 v1.1: JPG·PNG·WEBP, 최대 5MB) */
 const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const MAX_IMAGE_MB = 5;
 
@@ -46,7 +46,7 @@ export default function Medication() {
   };
 
   const reset = () => {
-    window.speechSynthesis?.cancel();
+    stopCurrent?.();
     setPreview(null);
     setScan(null);
     setError(null);
@@ -166,8 +166,10 @@ function GuideCard({ med, index, total }: { med: MedicationCard; index: number; 
           </p>
           <h2 id={titleId}>{med.name}</h2>
         </div>
-        {/* 허가된 일반 용법은 실제 처방과 다를 수 있어 읽지 않는다. 효능만 읽는다. */}
-        {!unavailable && d.purpose && <TtsPlayer text={`${med.name}. ${d.purpose}`} />}
+        {/* 허가된 일반 용법은 실제 처방과 다를 수 있어 읽지 않는다. 효능만 읽는다 (서버 음성도 이름·효능만 읽는다). */}
+        {!unavailable && d.purpose && (
+          <TtsPlayer text={`${med.name}. ${d.purpose}`} audioUrl={med.audio_status === 'READY' ? med.audio_url : null} />
+        )}
       </div>
       {/* 비슷한 이름의 약으로 추정했다는 주의. 빨강은 응급 전용이라 안내 상자로 보여 준다 */}
       {med.warning && (
@@ -223,22 +225,40 @@ function LeafletSection({ label, caption, text }: { label: string; caption?: str
   );
 }
 
+/** 한 번에 한 약만 읽는다. 다른 약의 재생을 시작하면 앞의 것을 멈춘다 */
+let stopCurrent: (() => void) | null = null;
+
 /**
- * 서버 음성이 계약에서 빠져, 임시로 브라우저 음성 합성으로 읽어 준다 — 네이버 클라우드(CLOVA Voice) 적용 후 제거 (PRD 10-3).
+ * 약 이름과 효능을 읽어 준다. 서버 음성(audio_status=READY 의 audio_url, CLOVA Voice mp3)을 먼저 쓰고,
+ * 주소가 없거나(NOT_GENERATED) 재생에 실패하면(1시간 만료·음성 생성 실패 등) 브라우저 음성 합성으로 대신 읽는다 (명세 v1.1 6장).
  */
-function TtsPlayer({ text }: { text: string }) {
+function TtsPlayer({ text, audioUrl }: { text: string; audioUrl: string | null }) {
   const [speaking, setSpeaking] = useState(false);
-  useEffect(() => () => window.speechSynthesis?.cancel(), []);
+  const audio = useRef<HTMLAudioElement | null>(null);
+  // 서버 음성이 한 번 실패하면 이 카드에서는 다시 시도하지 않고 브라우저 음성을 쓴다
+  const serverFailed = useRef(false);
+  const canBrowser = 'speechSynthesis' in window;
 
-  if (!('speechSynthesis' in window)) return null;
+  const stop = useCallback(() => {
+    audio.current?.pause();
+    audio.current = null;
+    if (canBrowser) window.speechSynthesis.cancel();
+    setSpeaking(false);
+  }, [canBrowser]);
 
-  const toggle = () => {
+  useEffect(
+    () => () => {
+      audio.current?.pause();
+      if (stopCurrent === stop) stopCurrent = null;
+    },
+    [stop],
+  );
+
+  if (!audioUrl && !canBrowser) return null;
+
+  const speakBrowser = () => {
+    if (!canBrowser) return setSpeaking(false);
     const synth = window.speechSynthesis;
-    if (speaking) {
-      synth.cancel();
-      setSpeaking(false);
-      return;
-    }
     synth.cancel();
     const u = new SpeechSynthesisUtterance(text);
     u.lang = 'ko-KR';
@@ -246,6 +266,31 @@ function TtsPlayer({ text }: { text: string }) {
     u.onend = () => setSpeaking(false);
     synth.speak(u);
     setSpeaking(true);
+  };
+
+  const playServer = (url: string) => {
+    const a = new Audio(serverUrl(url));
+    audio.current = a;
+    let fellBack = false;
+    const fallback = () => {
+      if (fellBack || audio.current !== a) return;
+      fellBack = true;
+      serverFailed.current = true;
+      audio.current = null;
+      speakBrowser();
+    };
+    a.onended = () => audio.current === a && setSpeaking(false);
+    a.onerror = fallback;
+    setSpeaking(true);
+    a.play().catch(fallback);
+  };
+
+  const toggle = () => {
+    if (speaking) return stop();
+    stopCurrent?.();
+    stopCurrent = stop;
+    if (audioUrl && !serverFailed.current) playServer(audioUrl);
+    else speakBrowser();
   };
 
   return (
