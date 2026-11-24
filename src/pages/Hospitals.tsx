@@ -50,47 +50,50 @@ const DEPTS = [
 ];
 const RADII_KM = [1, 3, 5];
 
-/** 여러 진료과 결과를 합친 병원. 같은 병원이 여러 진료과에서 나오면 하나로 묶는다 */
-type MergedHospital = Hospital & { departments: string[] };
-
 interface Merged {
   asOf: string | null;
-  hospitals: MergedHospital[];
+  hospitals: Hospital[];
   failed: string[]; // 검색에 실패한 진료과
   failMessage: string | null;
 }
 
-/** API 는 진료과를 하나씩 받으므로 진료과마다 요청해서 합친다 */
-async function searchMerged(depts: string[], center: Coords, radius: number, openNow: boolean): Promise<Merged> {
+/** 한 번에 보낼 수 있는 진료과 수 (명세 v1.1: 쉼표로 최대 5개) */
+const DEPTS_PER_REQUEST = 5;
+
+/**
+ * 고른 진료과를 쉼표로 묶어 open_now=false 로 한 번에 받는다. 5개가 넘으면 5개씩 나눠 보내고 합친다.
+ * 서버가 "진료 중 먼저, 그다음 가까운 순"으로 고르므로 false 한 번으로 진료 중인 병원이 잘리지 않는다 (명세 v1.1).
+ */
+async function searchMerged(depts: string[], center: Coords, radius: number): Promise<Merged> {
+  const chunks: string[][] = [];
+  for (let i = 0; i < depts.length; i += DEPTS_PER_REQUEST) chunks.push(depts.slice(i, i + DEPTS_PER_REQUEST));
   const results = await Promise.allSettled(
-    depts.map((department) =>
-      getOpenHospitals({ department, latitude: center.lat, longitude: center.lng, radius_km: radius, open_now: openNow }),
+    chunks.map((chunk) =>
+      getOpenHospitals({ department: chunk.join(','), latitude: center.lat, longitude: center.lng, radius_km: radius, open_now: false }),
     ),
   );
-  const byId = new Map<string, MergedHospital>();
+  const byId = new Map<string, Hospital>();
   const failed: string[] = [];
   let failMessage: string | null = null;
   let asOf: string | null = null;
   results.forEach((r, i) => {
     if (r.status === 'rejected') {
-      failed.push(depts[i]);
+      failed.push(...chunks[i]);
       failMessage ??= errorMessage(r.reason, '병원 정보를 불러오지 못했어요.');
       return;
     }
     asOf ??= r.value.as_of;
     for (const h of r.value.hospitals) {
       const prev = byId.get(h.hospital_id);
-      if (prev) {
-        if (!prev.departments.includes(h.department)) prev.departments.push(h.department);
-      } else {
-        byId.set(h.hospital_id, { ...h, departments: [h.department] });
-      }
+      // 나눠 보낸 요청에 같은 병원이 또 나오면 진료과만 더한다
+      if (prev) byId.set(h.hospital_id, { ...prev, departments: [...new Set([...prev.departments, ...h.departments])] });
+      else byId.set(h.hospital_id, h);
     }
   });
   return { asOf, hospitals: [...byId.values()], failed, failMessage };
 }
 
-const byDistance = (list: MergedHospital[]) => [...list].sort((a, b) => a.distance_km - b.distance_km);
+const byDistance = (list: Hospital[]) => [...list].sort((a, b) => a.distance_km - b.distance_km);
 
 /** 진료 시간이 아닌 병원은 가까운 몇 곳만 먼저 보여 주고 "더 보기"로 펼친다. 진료 중인 곳이 없으면 볼 게 이것뿐이라 더 많이 */
 const CLOSED_PREVIEW = 5;
@@ -153,9 +156,8 @@ export default function Hospitals() {
   // 내 위치의 동네 이름 (확인되면 안내 문구에만 사용)
   const [area, setArea] = useState<string | null>(null);
 
-  // 진료 중인 병원(open_now=true)과 반경 안 모든 병원(open_now=false). 항상 둘 다 받는다
+  // 반경 안 모든 병원(open_now=false). 진료 중 여부는 병원마다 is_open 으로 나눈다
   const [data, setData] = useState<Merged | null>(null);
-  const [allData, setAllData] = useState<Merged | null>(null);
   const [showAllClosed, setShowAllClosed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<string | undefined>();
@@ -202,22 +204,13 @@ export default function Hospitals() {
     setShowAllClosed(false);
     if (depts.length === 0 || !center) {
       setData(null);
-      setAllData(null);
       return;
     }
     let cancelled = false;
     setLoading(true);
-    void (async () => {
-      // 서버는 가까운 순으로 20곳에서 자르므로, open_now=false 한 번만 받으면 조금 먼 진료 중 병원이 잘릴 수 있다.
-      // 그래서 진료 중(true)과 전체(false)를 동시에 받아 합친다 (PRD F2)
-      const [open, all] = await Promise.all([
-        searchMerged(depts, center, radius, true),
-        searchMerged(depts, center, radius, false),
-      ]);
-      if (cancelled) return;
-      setData(open);
-      setAllData(all);
-    })().finally(() => !cancelled && setLoading(false));
+    void searchMerged(depts, center, radius)
+      .then((res) => !cancelled && setData(res))
+      .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;
     };
@@ -229,25 +222,20 @@ export default function Hospitals() {
     document.getElementById(`h-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }, []);
 
-  const openSorted = useMemo(() => byDistance(data?.hospitals ?? []), [data]);
-  // 진료 시간 아님 = 전체 결과에서 진료 중 목록에 있는 곳을 빼고, is_open=false 인 곳만.
-  // 두 요청 사이에 진료 시간 경계(예: 18:00)를 넘으면 같은 병원이 양쪽에 들어올 수 있어 둘 다 확인한다
-  const closedSorted = useMemo(() => {
-    const openIds = new Set(openSorted.map((h) => h.hospital_id));
-    return byDistance((allData?.hospitals ?? []).filter((h) => !h.is_open && !openIds.has(h.hospital_id)));
-  }, [allData, openSorted]);
+  // 5개씩 나눠 받은 결과를 합치므로 서버 정렬에 기대지 않고 가까운 순으로 다시 정렬한다
+  const openSorted = useMemo(() => byDistance((data?.hospitals ?? []).filter((h) => h.is_open)), [data]);
+  const closedSorted = useMemo(() => byDistance((data?.hospitals ?? []).filter((h) => !h.is_open)), [data]);
   const closedLimit = openSorted.length > 0 ? CLOSED_PREVIEW : CLOSED_PREVIEW_NO_OPEN;
   const visibleClosed = showAllClosed ? closedSorted : closedSorted.slice(0, closedLimit);
   const hiddenClosed = closedSorted.length - visibleClosed.length;
   // 지도에는 목록에 보이는 병원만 찍는다. 번호도 목록과 같게 진료 중 → 진료 시간 아님 순
   const shown = useMemo(() => [...openSorted, ...visibleClosed], [openSorted, visibleClosed]);
 
-  // 오류: 진료과별 실패는 두 요청을 합쳐 안내하고, 둘 다 모든 진료과에서 실패했을 때만 전부 실패로 본다
-  const openFailedAll = !!data && data.failed.length === depts.length;
-  const allFailed = openFailedAll && !!allData && allData.failed.length === depts.length;
-  const failedDepts = [...new Set([...(data?.failed ?? []), ...(allData?.failed ?? [])])];
-  const failMessage = data?.failMessage ?? allData?.failMessage ?? null;
-  const asOf = data?.asOf ?? allData?.asOf ?? null;
+  // 오류: 일부 진료과 묶음만 실패하면 받은 결과는 보여 주고, 모든 진료과가 실패했을 때만 전부 실패로 본다
+  const failedDepts = data?.failed ?? [];
+  const allFailed = !!data && failedDepts.length === depts.length;
+  const failMessage = data?.failMessage ?? null;
+  const asOf = data?.asOf ?? null;
   const nothing = !loading && !!data && !allFailed && shown.length === 0;
   // 안내 문구 속 진료과: 고른 목록은 위 조건 패널에 이미 보이므로, 여러 개면 "고른 진료과"로 줄인다
   const deptPhrase = depts.length === 1 ? depts[0] : '고른 진료과';
@@ -314,7 +302,7 @@ export default function Hospitals() {
     });
 
   /** 병원 한 줄. num 은 지도 핀과 같은 번호 */
-  const renderCard = (h: MergedHospital, num: number) => {
+  const renderCard = (h: Hospital, num: number) => {
     const hours = todayHours(h, now);
     const todayRaw = h.open_hours.find((o) => o.day_of_week === todayKey(now));
     const weekId = `week-${h.hospital_id}`;
@@ -531,11 +519,7 @@ export default function Hospitals() {
             <div className="error" role="alert">
               <Icon name="alert" />
               <span>
-                {allFailed
-                  ? failMessage
-                  : openFailedAll
-                    ? `지금 진료 중인지 확인하지 못했어요. 아래는 진료 시간이 아닌 병원이에요. ${failMessage ?? ''}`
-                    : `${failedDepts.join(', ')} 병원은 일부 불러오지 못했어요. ${failMessage ?? ''}`}
+                {allFailed ? failMessage : `${failedDepts.join(', ')} 병원은 불러오지 못했어요. ${failMessage ?? ''}`}
               </span>
               <button type="button" className="btn btn--ghost btn--sm" onClick={() => setReload((n) => n + 1)}>
                 <Icon name="restart" />
@@ -564,7 +548,7 @@ export default function Hospitals() {
 
           {!loading && closedSorted.length > 0 && (
             <>
-              {openSorted.length === 0 && !openFailedAll && (
+              {openSorted.length === 0 && (
                 <p className="hlist__notice">
                   {formatDistance(radius)} 안에 지금 진료 중인 {deptPhrase} 병원이 없어요. 가기 전에 전화로 진료 여부를 확인해 주세요.
                 </p>

@@ -75,3 +75,7 @@ desktop.ini
 
 # ===== 산출물 메모 (깃허브에 올리지 않음) =====
 docs/HISTORY.md
+docs/기술문서_확인필요.md
+
+# ===== 백엔드에서 받은 API 명세 원본 (저장소에 올리지 않음) =====
+MediNavi_API_명세서*.md
