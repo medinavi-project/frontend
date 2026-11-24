@@ -1,73 +1,66 @@
 import { useEffect, useState, type ChangeEvent } from 'react';
 import Icon from '../components/Icon';
-import { getGuide, scanMedication, type DrugGuide, type GuideResponse, type ScanResponse } from '../api';
+import { errorMessage, scanMedication, type MedicationCard, type MedicationScan } from '../api';
+import { plainText } from '../utils/text';
 
-type Step = 'upload' | 'confirm' | 'guide';
+/** 서버가 받는 사진 형식·크기 (Notion 명세 v1 2026-11-22: JPG·PNG·WEBP, 최대 5MB) */
+const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const MAX_IMAGE_MB = 5;
 
 export default function Medication() {
-  const [step, setStep] = useState<Step>('upload');
   const [preview, setPreview] = useState<string | null>(null);
-  const [scan, setScan] = useState<ScanResponse | null>(null);
-  const [picked, setPicked] = useState<Record<number, string>>({});
-  const [guide, setGuide] = useState<GuideResponse | null>(null);
+  const [scan, setScan] = useState<MedicationScan | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => () => {
-    if (preview) URL.revokeObjectURL(preview);
-  }, [preview]);
+  useEffect(
+    () => () => {
+      if (preview) URL.revokeObjectURL(preview);
+    },
+    [preview],
+  );
 
   const onFile = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    e.target.value = ''; // 같은 파일을 다시 골라도 동작하도록
+    if (!file || loading) return;
+    // 서버에 보내기 전에 형식·크기를 확인해 바로 안내한다
+    if (!IMAGE_TYPES.includes(file.type)) {
+      setError('JPG, PNG, WEBP 사진만 올릴 수 있어요. 카메라로 다시 찍거나 다른 사진을 골라 주세요.');
+      return;
+    }
+    if (file.size > MAX_IMAGE_MB * 1024 * 1024) {
+      setError(`사진이 ${MAX_IMAGE_MB}MB보다 커요. 더 작은 사진을 골라 주세요.`);
+      return;
+    }
     setPreview(URL.createObjectURL(file));
     setError(null);
     setLoading(true);
     try {
-      const res = await scanMedication(file);
-      setScan(res);
-      // 후보가 1개면 자동 확정, 여러 개면 가장 유사한 것을 기본 선택
-      setPicked(Object.fromEntries(res.items.map((it, i) => [i, it.candidates[0]?.item_seq ?? ''])));
-      setStep('confirm');
+      setScan(await scanMedication(file));
     } catch (err) {
-      setError(err instanceof Error ? err.message : '사진에서 글자를 읽지 못했습니다. 밝은 곳에서 다시 찍어 주세요.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const onConfirm = async () => {
-    const seqs = Object.values(picked).filter(Boolean);
-    if (seqs.length === 0) return;
-    setLoading(true);
-    setError(null);
-    try {
-      setGuide(await getGuide(seqs));
-      setStep('guide');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '복약 안내를 만들지 못했습니다.');
+      setError(errorMessage(err, '사진에서 글자를 읽지 못했어요. 밝은 곳에서 다시 찍어 주세요.'));
     } finally {
       setLoading(false);
     }
   };
 
   const reset = () => {
-    setStep('upload');
+    window.speechSynthesis?.cancel();
     setPreview(null);
     setScan(null);
-    setGuide(null);
-    setPicked({});
     setError(null);
   };
 
   return (
     <div className="container med">
-      <h1>약봉투 읽어 주기</h1>
-      <ol className="med__steps" aria-label="진행 단계">
-        <li className={step === 'upload' ? 'is-current' : 'is-done'}>사진 올리기</li>
-        <li className={step === 'confirm' ? 'is-current' : step === 'guide' ? 'is-done' : ''}>약 이름 확인</li>
-        <li className={step === 'guide' ? 'is-current' : ''}>복약 안내 듣기</li>
-      </ol>
+      <div className="med__head">
+        <h1>약봉투 읽어 주기</h1>
+        <ol className="med__steps" aria-label="진행 단계">
+          <li className={scan ? 'is-done' : 'is-current'}>사진 올리기</li>
+          <li className={scan ? 'is-current' : ''}>복약 안내 듣기</li>
+        </ol>
+      </div>
 
       {error && (
         <p className="error" role="alert">
@@ -76,10 +69,10 @@ export default function Medication() {
         </p>
       )}
 
-      {step === 'upload' && (
+      {!scan && (
         <section className="panel med__upload">
           <label className="dropzone">
-            <input type="file" accept="image/*" capture="environment" onChange={onFile} disabled={loading} />
+            <input type="file" accept={IMAGE_TYPES.join(',')} capture="environment" onChange={onFile} disabled={loading} />
             {preview ? (
               <img src={preview} alt="올린 약봉투 사진" />
             ) : (
@@ -93,126 +86,160 @@ export default function Medication() {
             )}
             <span className="btn" aria-hidden="true">
               {loading ? <span className="spinner" /> : <Icon name="camera" />}
-              {loading ? '글자를 읽는 중' : '사진 찍거나 고르기'}
+              {loading ? '글자를 읽고 안내를 만드는 중' : '사진 찍거나 고르기'}
             </span>
           </label>
         </section>
       )}
 
-      {step === 'confirm' && scan && (
-        <section className="panel">
-          <h2>이 약이 맞나요?</h2>
-          <p className="muted">사진에서 읽은 글자와 식약처 의약품 정보를 비교했어요. 다르면 맞는 약을 골라 주세요.</p>
-          <div className="confirm-list">
-            {scan.items.map((it, i) => (
-              <fieldset key={i} className="confirm-item">
-                <legend>
-                  사진에서 읽은 글자: <strong>{it.ocr_text}</strong>
-                </legend>
-                {it.candidates.map((c) => (
-                  <label key={c.item_seq} className="candidate">
-                    <input
-                      type="radio"
-                      name={`item-${i}`}
-                      checked={picked[i] === c.item_seq}
-                      onChange={() => setPicked((p) => ({ ...p, [i]: c.item_seq }))}
-                    />
-                    <span>{c.item_name}</span>
-                    {it.candidates.length > 1 && <span className="muted">일치도 {Math.round(c.score * 100)}%</span>}
-                  </label>
-                ))}
-                <label className="candidate">
-                  <input
-                    type="radio"
-                    name={`item-${i}`}
-                    checked={picked[i] === ''}
-                    onChange={() => setPicked((p) => ({ ...p, [i]: '' }))}
-                  />
-                  <span className="muted">이 중에 없어요 (안내에서 빼기)</span>
-                </label>
-              </fieldset>
-            ))}
-          </div>
-          <div className="med__actions">
+      {scan && (
+        <section className="guides">
+          {scan.medications.length === 0 && scan.uncertain_medications.length === 0 && (
+            <p className="muted">사진에서 약 이름을 찾지 못했어요. 약 이름이 잘 보이게 다시 찍어 주세요.</p>
+          )}
+          {scan.medications.length > 0 && (
+            <p className="med__notice" role="note">
+              <Icon name="alert" />
+              실제 복용법은 약봉투와 약사 안내를 따르세요.
+            </p>
+          )}
+          {scan.medications.map((m, i) => (
+            <GuideCard key={m.item_seq} med={m} index={i} total={scan.medications.length} />
+          ))}
+          {scan.uncertain_medications.length > 0 && (
+            <section className="leaflet leaflet--uncertain" aria-labelledby="uncertain-title">
+              <h2 id="uncertain-title">확실히 찾지 못한 약</h2>
+              {scan.uncertain_medications.map((u, i) => (
+                <div key={i}>
+                  <p>
+                    사진에서 읽은 글자: <strong>{u.recognized_name}</strong>
+                  </p>
+                  <p className="muted">{u.reason}</p>
+                  <p>{u.action_message}</p>
+                </div>
+              ))}
+            </section>
+          )}
+          <div className="guides__foot">
+            <p className="muted">복용 중 이상하면 약사나 의사와 상의하세요.</p>
             <button className="btn btn--ghost" type="button" onClick={reset}>
               <Icon name="camera" />
-              다시 찍기
-            </button>
-            <button className="btn" type="button" onClick={onConfirm} disabled={loading || !Object.values(picked).some(Boolean)}>
-              {loading ? '안내를 만드는 중' : '복약 안내 보기'}
+              다른 약봉투 읽기
             </button>
           </div>
-        </section>
-      )}
-
-      {step === 'guide' && guide && (
-        <section className="guides">
-          <TtsPlayer url={guide.tts_url} text={guide.guides.map((g) => `${g.item_name}. ${g.summary.join(' ')}`).join(' ')} />
-          {guide.guides.map((g) => (
-            <GuideCard key={g.item_seq} guide={g} />
-          ))}
-          <p className="muted">출처: 식품의약품안전처 의약품개요정보(e약은요). 복용 중 이상하면 약사나 의사와 상의하세요.</p>
-          <button className="btn btn--ghost" type="button" onClick={reset}>
-            <Icon name="camera" />
-            다른 약봉투 읽기
-          </button>
         </section>
       )}
     </div>
   );
 }
 
-function GuideCard({ guide }: { guide: DrugGuide }) {
+type DescKey = keyof MedicationCard['description'];
+
+/** 효능 아래에 이어지는 항목. caption 은 항목 이름 아래 작은 안내 */
+const SECTIONS: { key: DescKey; label: string; caption?: string }[] = [
+  { key: 'how_to_take', label: '허가된 일반 용법', caption: '허가된 모든 경우를 적은 글이라 실제 처방과 다를 수 있어요.' },
+  { key: 'precautions', label: '주의할 점' },
+  { key: 'side_effects', label: '이상반응' },
+  { key: 'storage', label: '보관 방법' },
+];
+const ALL_KEYS: DescKey[] = ['purpose', ...SECTIONS.map((s) => s.key)];
+
+const ORDINALS = ['첫', '두', '세', '네', '다섯', '여섯', '일곱', '여덟', '아홉', '열'];
+const ordinal = (i: number) => `${ORDINALS[i] ?? i + 1} 번째`;
+
+/** 이보다 길면 처음 몇 줄만 보이고 "전체 보기"로 펼친다 */
+const LONG_TEXT = 160;
+
+function GuideCard({ med, index, total }: { med: MedicationCard; index: number; total: number }) {
+  const d = Object.fromEntries(ALL_KEYS.map((key) => [key, plainText(med.description[key])])) as Record<
+    DescKey,
+    string | null
+  >;
+  const unavailable = med.guidance_status === 'UNAVAILABLE' || ALL_KEYS.every((key) => !d[key]);
+  const titleId = `med-${index}`;
   return (
-    <article className="panel guide">
-      <h2>{guide.item_name}</h2>
-      <ol className="guide__summary">
-        {guide.summary.map((line, i) => (
-          <li key={i}>{line}</li>
-        ))}
-      </ol>
-      <details>
-        <summary>자세한 공식 정보</summary>
-        <dl className="guide__table">
-          <dt>효능</dt>
-          <dd>{guide.efficacy}</dd>
-          <dt>먹는 법</dt>
-          <dd>{guide.usage}</dd>
-          <dt>주의할 점</dt>
-          <dd>{guide.caution}</dd>
-          <dt>같이 먹으면 안 되는 것</dt>
-          <dd>{guide.interaction}</dd>
-        </dl>
-      </details>
+    <article className={`leaflet${unavailable ? ' leaflet--empty' : ''}`} aria-labelledby={titleId}>
+      <div className="leaflet__head">
+        <div>
+          <p className="leaflet__order">
+            찾은 약 {total}개 중 {ordinal(index)}
+          </p>
+          <h2 id={titleId}>{med.name}</h2>
+        </div>
+        {/* 허가된 일반 용법은 실제 처방과 다를 수 있어 읽지 않는다. 효능만 읽는다. */}
+        {!unavailable && d.purpose && <TtsPlayer text={`${med.name}. ${d.purpose}`} />}
+      </div>
+      {/* 비슷한 이름의 약으로 추정했다는 주의. 빨강은 응급 전용이라 안내 상자로 보여 준다 */}
+      {med.warning && (
+        <p className="med__notice" role="note">
+          <Icon name="alert" />
+          {med.warning}
+        </p>
+      )}
+      {unavailable ? (
+        <p className="muted">이 약은 안내 정보를 찾지 못했어요. 약사에게 물어보세요.</p>
+      ) : (
+        <>
+          <section className="leaflet__lede">
+            <h3>효능</h3>
+            <p className={d.purpose ? undefined : 'muted'}>{d.purpose ?? '정보가 없어요'}</p>
+          </section>
+          {SECTIONS.map((s) => (
+            <LeafletSection key={s.key} label={s.label} caption={s.caption} text={d[s.key]} />
+          ))}
+        </>
+      )}
     </article>
   );
 }
 
-/** CLOVA Voice mp3 가 있으면 재생, 없으면(목업·개발 중) 브라우저 음성 합성으로 대체 */
-function TtsPlayer({ url, text }: { url: string | null; text: string }) {
+function LeafletSection({ label, caption, text }: { label: string; caption?: string; text: string | null }) {
+  const [open, setOpen] = useState(false);
+  const long = !!text && text.length > LONG_TEXT;
+  const paras = text ? text.split('\n') : [];
+  return (
+    <section className="leaflet__row">
+      <div className="leaflet__label">
+        <h3>{label}</h3>
+        {caption && <p>{caption}</p>}
+      </div>
+      <div className="leaflet__body">
+        {text ? (
+          <div className={long && !open ? 'leaflet__text is-clamped' : 'leaflet__text'}>
+            {paras.map((p, i) => (
+              <p key={i}>{p}</p>
+            ))}
+          </div>
+        ) : (
+          <p className="muted">정보가 없어요</p>
+        )}
+        {long && (
+          <button className="leaflet__more" type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+            {open ? '접기' : '전체 보기'}
+          </button>
+        )}
+      </div>
+    </section>
+  );
+}
+
+/**
+ * 서버 음성이 계약에서 빠져, 임시로 브라우저 음성 합성으로 읽어 준다 — 네이버 클라우드(CLOVA Voice) 적용 후 제거 (PRD 10-3).
+ */
+function TtsPlayer({ text }: { text: string }) {
   const [speaking, setSpeaking] = useState(false);
   useEffect(() => () => window.speechSynthesis?.cancel(), []);
 
-  if (url) {
-    return (
-      <div className="panel tts">
-        <span className="tts__label">
-          <Icon name="volume" size={28} />
-          <strong>음성으로 듣기</strong>
-        </span>
-        <audio controls src={url} preload="none" />
-      </div>
-    );
-  }
+  if (!('speechSynthesis' in window)) return null;
 
   const toggle = () => {
     const synth = window.speechSynthesis;
-    if (!synth) return;
     if (speaking) {
       synth.cancel();
       setSpeaking(false);
       return;
     }
+    synth.cancel();
     const u = new SpeechSynthesisUtterance(text);
     u.lang = 'ko-KR';
     u.rate = 0.9;
@@ -222,14 +249,10 @@ function TtsPlayer({ url, text }: { url: string | null; text: string }) {
   };
 
   return (
-    <div className="panel tts">
-      <span className="tts__label">
-        <Icon name="volume" size={28} />
-        <strong>음성으로 듣기</strong>
-      </span>
-      <button className="btn" type="button" onClick={toggle} aria-pressed={speaking}>
+    <div className="guide__tts">
+      <button className="btn btn--ghost btn--sm" type="button" onClick={toggle} aria-pressed={speaking}>
         <Icon name={speaking ? 'stop' : 'volume'} />
-        {speaking ? '멈추기' : '안내 듣기'}
+        {speaking ? '멈추기' : '효능 소리로 듣기'}
       </button>
     </div>
   );

@@ -383,37 +383,10 @@
   padding-block: 1.25rem 0.75rem;
   z-index: 5;
 }
-.scale {
+.chat__wait {
   display: grid;
-  gap: 0.35rem;
-}
-.scale__buttons {
-  display: grid;
-  grid-template-columns: repeat(11, minmax(0, 1fr));
-  gap: 4px;
-}
-.scale__buttons button {
-  min-height: 48px;
-  border: 1px solid var(--line-strong);
-  background: var(--surface);
-  border-radius: var(--radius-s);
-  font-weight: 700;
-  font-size: var(--step-0);
-  transition:
-    background 160ms var(--ease),
-    border-color 160ms var(--ease);
-}
-.scale__buttons button:hover {
-  border-color: var(--rx);
-  background: var(--rx-wash);
-}
-.scale__buttons button:nth-child(n + 8) {
-  box-shadow: inset 0 -3px 0 var(--alert);
-}
-.scale__ends {
-  display: flex;
-  justify-content: space-between;
-  font-size: var(--step--1);
+  justify-items: start;
+  gap: 0.6rem;
 }
 .chat__form {
   display: flex;
@@ -455,23 +428,6 @@
   font-size: var(--step-1);
   margin: 0;
 }
-.side__turn {
-  font-size: var(--step--1);
-  white-space: nowrap;
-}
-.progress {
-  height: 6px;
-  border-radius: var(--radius-pill);
-  background: var(--rx-wash);
-  overflow: hidden;
-}
-.progress span {
-  display: block;
-  height: 100%;
-  background: var(--rx);
-  border-radius: inherit;
-  transition: width 300ms var(--ease);
-}
 .slots {
   margin: 0;
   display: grid;
@@ -510,10 +466,6 @@
   color: var(--ink);
   font-weight: 600;
 }
-.slot.is-asking dd {
-  color: var(--rx);
-  font-weight: 600;
-}
 
 /* 결과 카드 */
 .result {
@@ -543,7 +495,7 @@
   color: var(--rx);
 }
 .result__dept {
-  font-size: clamp(2.3rem, 5vw, 2.9rem);
+  font-size: var(--step-4);
   margin: 0;
   line-height: 1.1;
   letter-spacing: -0.04em;
@@ -595,6 +547,12 @@
 .result__evidence p {
   margin: 0.2rem 0 0;
 }
+.result__disclaimer {
+  margin: 0;
+  padding: 1rem 1.8rem 1.4rem;
+  border-top: 1px solid var(--line);
+  font-size: var(--step--1);
+}
 
 /* ── 병원 ── */
 .hospitals__head h1,
@@ -604,69 +562,165 @@
 .hospitals__head p {
   margin: 0;
 }
-.filters {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: var(--space-2) var(--space-3);
+/* 찾는 조건: 기준 위치 · 진료과 · 거리를 한 패널에 줄로 나눈다 */
+.hsearch {
   margin: var(--space-3) 0;
-}
-.filters__field {
-  display: grid;
-  gap: 0.3rem;
-  border: 0;
-  padding: 0;
-  margin: 0;
-  min-width: 0;
-}
-.filters__field > span,
-.filters__field legend {
-  font-size: var(--step--1);
-  font-weight: 600;
-  padding: 0;
-}
-.filters select {
-  min-height: var(--tap);
-  padding: 0 2.5rem 0 1rem;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-s);
+  padding: 0.25rem var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
   background: var(--surface);
 }
-.filters__radius {
+.hsearch__row {
+  display: grid;
+  grid-template-columns: 9rem minmax(0, 1fr);
+  gap: 0.5rem var(--space-2);
+  align-items: center;
+  padding-block: 1rem;
+}
+.hsearch__row + .hsearch__row,
+.hsearch > .addrpick + .hsearch__row,
+.hsearch > .error + .hsearch__row {
+  border-top: 1px solid var(--line);
+}
+.hsearch__label {
+  display: grid;
+  font-weight: 700;
+}
+.hsearch__label small {
+  font-size: var(--step--1);
+  font-weight: 400;
+  color: var(--ink-soft);
+}
+.hsearch__loc {
   display: flex;
-  gap: 0.35rem;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem var(--space-2);
 }
-.filters__radius legend {
-  margin-bottom: 0.3rem;
+.hsearch__where {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.5em;
+  margin: 0;
+  font-weight: 600;
+  color: var(--ink);
 }
-.filters__radius label {
+/* 거리: "○○에서 [1km|3km|5km] 안" 으로 기준 위치 줄 안에 붙인 하나짜리 선택 막대 */
+.seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+}
+.seg label {
   cursor: pointer;
 }
-.filters__radius input {
+.seg input {
   position: absolute;
   opacity: 0;
 }
-.filters__radius span {
+.seg span {
   display: inline-flex;
   align-items: center;
-  min-height: var(--tap);
-  padding: 0 1rem;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-s);
-  background: var(--surface);
-  transition: border-color 160ms var(--ease);
+  min-height: 44px;
+  padding: 0 1em;
+  border-radius: var(--radius-pill);
+  font-weight: 500;
+  transition: background 160ms var(--ease);
 }
-.filters__radius label:hover span {
+.seg label:hover span {
+  background: var(--tint);
+}
+.seg input:checked + span {
+  background: var(--rx);
+  color: var(--on-rx);
+  font-weight: 700;
+}
+.seg input:focus-visible + span {
+  outline: 3px solid var(--rx);
+  outline-offset: 2px;
+}
+/* 모바일에서 접었을 때의 한 줄 요약과 "이 조건으로 보기" — 데스크톱에서는 쓰지 않는다 */
+.hsummary,
+.hsearch__done {
+  display: none;
+}
+.hsearch__where svg {
+  flex: none;
+  color: var(--rx);
+}
+.hsearch__btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.hsearch__note {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: var(--step--1);
+}
+.hsearch > .addrpick,
+.hsearch > .error {
+  margin: 0 0 1rem;
+}
+
+/* 고르는 버튼 묶음 (진료과 여러 개 · 거리 하나) */
+.optset {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.optset label {
+  cursor: pointer;
+}
+.optset input {
+  position: absolute;
+  opacity: 0;
+}
+/* 고르면 체크 표시(0.9em + 간격 0.3em)가 생기고 글자가 굵어진다.
+   버튼 너비가 바뀌어 줄이 밀리지 않게, 안 골랐을 때 그만큼 양옆 여백을 미리 더 주고
+   글자 칸은 굵은 글자 너비로 잡아 둔다 */
+.optset > label > span {
+  --pad: 0.95rem;
+  --chk: 1.2em;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  min-height: 44px;
+  padding: 0 calc(var(--pad) + var(--chk) / 2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  transition:
+    border-color 160ms var(--ease),
+    background 160ms var(--ease);
+}
+.optset__txt {
+  display: inline-grid;
+}
+.optset__txt::after {
+  content: attr(data-text);
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  font-weight: 600;
+}
+.optset label:hover span {
   border-color: var(--ink-soft);
 }
-.filters__radius input:checked + span {
+.optset input:checked + span {
+  padding-inline: var(--pad);
   border-color: var(--rx);
   background: var(--rx-wash);
   color: var(--rx-deep);
   font-weight: 600;
   box-shadow: inset 0 0 0 1px var(--rx);
 }
-.filters__radius input:focus-visible + span {
+.optset input:focus-visible + span {
   outline: 3px solid var(--rx);
   outline-offset: 2px;
 }
@@ -735,10 +789,6 @@
 .map__pin:hover {
   transform: translate(-50%, calc(-50% - 2px));
 }
-.map__pin.is-er {
-  background: var(--alert);
-  color: var(--on-alert);
-}
 .map__pin.is-selected {
   background: var(--rx-deep);
   color: var(--paper);
@@ -756,6 +806,110 @@
   font-size: var(--step--1);
   white-space: nowrap;
 }
+/* 네이버 지도가 컨테이너에 position:relative 를 직접 지정하므로 absolute/inset 대신 크기를 명시한다 */
+.map__canvas {
+  width: 100%;
+  height: 100%;
+}
+.map__zoom {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  z-index: 10;
+  display: grid;
+  gap: 0.5rem;
+}
+.map__zoom button {
+  display: grid;
+  place-items: center;
+  width: var(--tap);
+  height: var(--tap);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  transition: border-color 160ms var(--ease);
+}
+.map__zoom button:hover {
+  border-color: var(--ink-soft);
+}
+.map__zoom button:focus-visible {
+  outline: 3px solid var(--rx);
+  outline-offset: 2px;
+}
+/* 실제 지도 위 마커 (JS 가 만든 DOM). 번호는 목록과 같다 */
+.nmark {
+  position: relative;
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 3px solid var(--surface);
+  border-radius: 50%;
+  background: var(--rx);
+  color: var(--on-rx);
+  font-weight: 700;
+  font-size: var(--step-0);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+}
+.nmark.is-selected {
+  background: var(--rx-deep);
+  color: var(--paper);
+  transform: scale(1.15);
+}
+.nmark__name,
+.nme__label {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--ink);
+  color: var(--paper);
+  border-radius: 8px;
+  padding: 0.2em 0.7em;
+  font-size: var(--step--1);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.nmark__name {
+  display: none;
+}
+.nmark.is-selected .nmark__name {
+  display: block;
+}
+.nme {
+  position: relative;
+  box-sizing: border-box;
+  width: 18px;
+  height: 18px;
+  border: 3px solid var(--surface);
+  border-radius: 50%;
+  background: var(--ink);
+  box-shadow: var(--shadow-sm);
+}
+.addrpick {
+  margin: 0 0 var(--space-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+  overflow: hidden;
+}
+.addrpick__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 0.5rem 0.75rem 0.5rem 1rem;
+  border-bottom: 1px solid var(--line);
+}
+.addrpick__box {
+  height: 460px;
+  max-height: 70vh;
+}
 .map__note {
   position: absolute;
   left: 0.75rem;
@@ -765,99 +919,345 @@
   color: var(--ink-soft);
 }
 
-.hlist ul {
-  list-style: none;
-  padding: 0;
-  margin: 0;
+.hlist {
   display: grid;
   gap: 0.75rem;
+  align-content: start;
 }
-.hlist__notice {
-  background: var(--rx-wash);
-  border-radius: var(--radius-s);
-  padding: 0.75rem 1rem;
+.hlist > p {
+  margin: 0;
 }
-.hcard {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-m);
-  padding: 1.1rem 1.25rem;
-  display: grid;
-  gap: 0.8rem;
-  transition:
-    border-color 160ms var(--ease),
-    box-shadow 160ms var(--ease);
-}
-.hcard:hover {
-  border-color: var(--line-strong);
-  box-shadow: var(--shadow-sm);
-}
-.hcard.is-selected {
-  border-color: var(--rx);
-  box-shadow:
-    inset 0 0 0 1px var(--rx),
-    var(--shadow-sm);
-}
-.hcard.is-er {
-  border-left: 4px solid var(--alert);
-}
-.hcard__main {
-  display: grid;
-  gap: 0.3rem;
-  text-align: left;
-  border: 0;
-  background: none;
-  padding: 0;
-}
-.hcard__top {
+.hlist__head {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
   gap: 0.5rem;
 }
-.hcard__top strong {
+.hlist__head h2 {
+  margin: 0;
   font-size: var(--step-1);
+}
+.hlist__count {
+  color: var(--rx);
+}
+.hlist__count--muted {
+  color: var(--ink-soft);
+}
+.hlist__head .muted {
+  font-size: var(--step--1);
+}
+/* 진료 중 목록 아래에 오는 "진료 시간 아님" 구역: 구분선으로 나눈다 */
+.hlist__head--closed {
+  margin-top: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--line);
+}
+.hlist__more {
+  width: 100%;
+}
+/* 병원 목록: 따로 떨어진 카드 대신 한 묶음 안에서 줄로 나눈다 */
+.hlist ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  overflow: hidden;
+  background: var(--surface);
+}
+.hlist__notice {
+  max-width: none;
+  background: var(--rx-wash);
+  border-radius: var(--radius-s);
+  padding: 0.75rem 1rem;
+}
+.hcard {
+  --num: 2rem; /* 번호 지름. 아래 줄들을 이름 시작선에 맞춘다 */
+  --indent: calc(var(--num) + 0.9rem);
+  display: grid;
+  gap: 0.6rem;
+  padding: 1.1rem 1.25rem;
+  transition: background 160ms var(--ease);
+}
+.hcard + .hcard {
+  border-top: 1px solid var(--line);
+}
+.hcard:hover {
+  background: var(--tint);
+}
+/* 지도에서 고른 병원: 왼쪽 파란 띠와 옅은 파란 바탕 */
+.hcard.is-selected {
+  background: var(--rx-wash);
+  box-shadow: inset 4px 0 0 var(--rx);
+}
+.hcard__main {
+  display: grid;
+  grid-template-columns: var(--num) minmax(0, 1fr);
+  gap: 0.9rem;
+  align-items: start;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.hcard__main:focus-visible {
+  outline: 3px solid var(--rx);
+  outline-offset: 4px;
+  border-radius: var(--radius-s);
+}
+.hcard__info {
+  display: grid;
+  gap: 0.45rem;
+  min-width: 0;
+}
+.hcard__top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+.hcard__name {
+  font-size: var(--step-1);
+  line-height: 1.35;
   letter-spacing: -0.02em;
 }
+.hcard__dist {
+  flex: none;
+  font-weight: 700;
+}
 .hcard__num {
-  display: inline-grid;
+  display: grid;
   place-items: center;
-  width: 1.7em;
-  height: 1.7em;
-  margin-right: 0.4em;
+  width: var(--num);
+  height: var(--num);
   border-radius: 50%;
   background: var(--rx);
   color: var(--on-rx);
   font-size: var(--step--1);
   font-weight: 700;
-  vertical-align: 0.15em;
-}
-.hcard.is-er .hcard__num {
-  background: var(--alert);
-  color: var(--on-alert);
 }
 .hcard__meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.25rem 0.75rem;
+  gap: 0.25rem 0.6rem;
   align-items: center;
-}
-.hcard__addr {
   font-size: var(--step--1);
 }
-.hcard__call {
-  justify-self: start;
+.hcard__depts,
+.hcard__addr,
+.hcard__today {
+  font-size: var(--step--1);
+  color: var(--ink-soft);
+}
+
+/* 오늘 진료 시간 막대: 하루(기본 8시~22시) 중 진료 시간을 칠하고 지금 시각에 세로선 */
+.daybar {
+  display: grid;
+  gap: 0.3rem;
+  padding-top: 0.15rem;
+}
+.daybar__track {
+  position: relative;
+  height: 10px;
+  border-radius: var(--radius-pill);
+  background: var(--tint);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.hcard:hover .daybar__track,
+.hcard.is-selected .daybar__track {
+  background: var(--surface);
+}
+.daybar__fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--rx) 40%, var(--surface));
+}
+.daybar__fill--closed {
+  background: color-mix(in srgb, var(--ink-soft) 30%, var(--surface));
+}
+.daybar__now {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--ink);
+}
+.daybar__labels {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: var(--step--1);
+  color: var(--ink-soft);
+}
+.daybar__nowtext {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* 전화 걸기 · 요일별 진료 시간 */
+.hcard__acts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin-left: var(--indent);
+}
+.hcard__nophone {
+  font-size: var(--step--1);
+}
+.hcard__weekbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45em;
+  min-height: 44px;
+  padding: 0 0.4em;
+  border: 0;
+  background: none;
+  color: var(--rx-deep);
+  font: inherit;
+  font-size: var(--step--1);
+  font-weight: 600;
+  cursor: pointer;
+}
+/* 펼칠 수 있다는 표시: 아래 화살표, 펼치면 위로 */
+.hcard__weekbtn::after {
+  content: '';
+  width: 0.45em;
+  height: 0.45em;
+  margin-top: -0.2em;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg);
+  transition: transform 160ms var(--ease);
+}
+.hcard__weekbtn[aria-expanded='true']::after {
+  margin-top: 0.2em;
+  transform: rotate(-135deg);
+}
+.hcard__weekbtn:focus-visible {
+  outline: 3px solid var(--rx);
+  outline-offset: 2px;
+  border-radius: var(--radius-s);
+}
+.hcard__week {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+  gap: 0.25rem 1rem;
+  margin: 0 0 0 var(--indent);
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--line);
+  font-size: var(--step--1);
+}
+.hcard__week > div {
+  display: flex;
+  gap: 0.6rem;
+}
+.hcard__week dt {
+  font-weight: 600;
+  min-width: 1.2em;
+}
+.hcard__week dd {
+  margin: 0;
+}
+.hcard__week .is-today {
+  font-weight: 700;
+  color: var(--ink);
+}
+
+/* 진료 시간이 아닌 병원: 번호를 회색 테두리로 (지도 핀과 같게) */
+.hcard.is-closed .hcard__num,
+.map__pin.is-closed,
+.nmark--closed {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: inset 0 0 0 2px var(--ink-soft);
+}
+.map__pin.is-closed,
+.nmark--closed {
+  box-shadow:
+    inset 0 0 0 2px var(--ink-soft),
+    var(--shadow-sm);
+}
+.map__pin.is-closed.is-selected,
+.nmark--closed.is-selected {
+  background: var(--rx-deep);
+  color: var(--paper);
+}
+
+/* 지도 위 범례와 "내 위치로 지도 맞추기" */
+.map__legend {
+  position: absolute;
+  top: 0.75rem;
+  left: 0.75rem;
+  z-index: 10;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.9rem;
+  max-width: calc(100% - var(--tap) - 2.5rem);
+  margin: 0;
+  padding: 0.4rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  font-size: var(--step--1);
+  list-style: none;
+}
+.map__legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+}
+.map__key {
+  flex: none;
+  width: 0.9em;
+  height: 0.9em;
+  border-radius: 50%;
+  background: var(--rx);
+}
+.map__key--closed {
+  background: var(--surface);
+  box-shadow: inset 0 0 0 2px var(--ink-soft);
+}
+.map__key--ring {
+  background: none;
+  border: 2px dashed var(--rx);
+}
+.map__recenter {
+  position: absolute;
+  right: 0.75rem;
+  bottom: 0.75rem;
+  z-index: 10;
+  box-shadow: var(--shadow-sm);
 }
 
 /* ── 복약 ── */
 .med {
   max-width: 52rem;
 }
+.med__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.med__head h1 {
+  margin: 0;
+}
 .med__steps {
   list-style: none;
   counter-reset: step;
   padding: 0;
-  margin: 0 0 var(--space-3);
+  margin: 0;
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem var(--space-3);
@@ -995,65 +1395,22 @@
 }
 .guides {
   display: grid;
-  gap: var(--space-2);
+  gap: var(--space-4);
 }
-.tts {
+.med__notice {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-  background: var(--rx);
-  color: var(--on-rx);
-  border: 0;
-  border-radius: var(--radius-m);
-}
-.tts__label {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.6rem;
-  font-size: var(--step-1);
-}
-.tts .btn {
-  background: var(--surface);
-  color: var(--rx-deep);
-  border-color: var(--surface);
-}
-.tts .btn:hover {
+  gap: 0.5em;
+  align-items: flex-start;
+  margin: 0;
+  max-width: none; /* 전역 p 의 38em 제한을 풀어 아래 카드 폭과 맞춘다 */
+  padding: 0.8rem 1rem;
+  border-radius: var(--radius-s);
   background: var(--rx-wash);
-  border-color: var(--rx-wash);
-}
-.tts audio {
-  max-width: 100%;
-}
-.guide {
-  box-shadow: var(--shadow-sm);
-}
-.guide h2 {
-  font-size: var(--step-2);
-}
-.guide__summary {
-  list-style: none;
-  counter-reset: line;
-  padding: 0;
-  margin: 0 0 var(--space-2);
-  display: grid;
-  gap: 0.6rem;
-}
-.guide__summary li {
-  counter-increment: line;
-  display: grid;
-  grid-template-columns: 2rem 1fr;
-  align-items: baseline;
+  color: var(--rx-deep);
   font-size: var(--step-1);
-  line-height: 1.5;
+  font-weight: 600;
 }
-.guide__summary li::before {
-  content: counter(line);
-  font-weight: 700;
-  color: var(--rx);
-}
-.guide details summary {
+.med__ocr summary {
   display: inline-flex;
   align-items: center;
   min-height: 44px;
@@ -1061,18 +1418,150 @@
   color: var(--rx);
   font-weight: 600;
 }
-.guide__table {
-  display: grid;
-  grid-template-columns: max-content 1fr;
-  gap: 0.6rem 1.25rem;
-  margin: 0.75rem 0 0;
-  padding-top: 0.75rem;
-  border-top: 1px solid var(--line);
+.med__ocr p {
+  margin: 0 0 var(--space-2);
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-s);
+  background: var(--tint);
+  white-space: pre-wrap;
 }
-.guide__table dt {
+.guide__tts {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.tts__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--rx);
+}
+.guide__tts audio {
+  max-width: 100%;
+}
+/* 약 설명서: 카드 대신 위쪽 굵은 선으로 약 하나를 묶고, 항목 이름은 왼쪽 여백에 건다 */
+.leaflet {
+  border-top: 4px solid var(--rx);
+  padding-top: var(--space-3);
+}
+.leaflet--empty {
+  border-top-color: var(--line-strong);
+}
+.leaflet--uncertain {
+  border-top: 2px dashed var(--line-strong);
+}
+.leaflet--uncertain h2 {
+  font-size: var(--step-1);
+  margin: 0 0 0.5rem;
+}
+.leaflet--uncertain p {
+  margin: 0 0 0.25rem;
+}
+.leaflet__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+.leaflet__head h2 {
+  margin: 0;
+  font-size: var(--step-3);
+  line-height: 1.2;
+  letter-spacing: -0.03em;
+}
+.leaflet__order {
+  margin: 0 0 0.15rem;
+  color: var(--ink-soft);
+  font-size: var(--step--1);
   font-weight: 600;
 }
-.guide__table dd {
+.leaflet__lede,
+.leaflet__row {
+  display: grid;
+  grid-template-columns: 10em minmax(0, 1fr);
+}
+.leaflet__lede {
+  margin-bottom: 0.5rem;
+}
+.leaflet__lede h3 {
+  margin: 0;
+  padding-top: 0.2rem;
+  font-size: var(--step-0);
+  color: var(--rx-deep);
+}
+.leaflet__lede p {
+  margin: 0;
+  max-width: 32em;
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--rx);
+  font-size: var(--step-1);
+  font-weight: 500;
+  white-space: pre-line;
+}
+.leaflet__row {
+  border-top: 1px solid var(--line);
+}
+.leaflet__label {
+  padding: var(--space-2) var(--space-2) var(--space-2) 0;
+}
+.leaflet__label h3 {
+  margin: 0;
+  font-size: var(--step-0);
+  line-height: 1.4;
+}
+.leaflet__label p {
+  margin: 0.35rem 0 0;
+  color: var(--ink-soft);
+  font-size: var(--step--1);
+  line-height: 1.45;
+}
+.leaflet__body {
+  padding: var(--space-2) 0 var(--space-2) var(--space-3);
+  border-left: 2px solid var(--line);
+}
+.leaflet__body > p {
+  margin: 0;
+}
+.leaflet__text {
+  display: grid;
+  gap: 0.5rem;
+  max-width: 36em;
+  line-height: 1.75;
+}
+.leaflet__text p {
+  margin: 0;
+}
+.leaflet__text.is-clamped {
+  max-height: 5.25em; /* 3줄 */
+  overflow: hidden;
+}
+.leaflet__more {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--rx);
+  font-size: var(--step--1);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  cursor: pointer;
+}
+.guides__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--line);
+}
+.guides__foot p {
   margin: 0;
 }
 
@@ -1123,7 +1612,7 @@
   .map {
     position: relative;
     top: 0;
-    height: 48vh;
+    height: min(46vh, 22rem);
   }
   .how ol {
     grid-template-columns: 1fr;
@@ -1137,6 +1626,53 @@
 @media (max-width: 720px) {
   .hero {
     padding-block: var(--space-4);
+  }
+  /* 찾는 조건을 한 줄로 접어 지도가 첫 화면에 들어오게 한다 */
+  .hsearch--folded {
+    display: none;
+  }
+  .hsummary {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin: var(--space-3) 0;
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-m);
+  }
+  .hsummary__text {
+    flex: 1;
+    min-width: 0;
+  }
+  .hsummary__text p {
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .hsummary__where {
+    display: flex;
+    align-items: center;
+    gap: 0.35em;
+    font-weight: 600;
+  }
+  .hsummary__where svg {
+    flex: none;
+    color: var(--rx);
+  }
+  .hsummary__where span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .hsummary .btn {
+    flex: none;
+  }
+  .hsearch__done {
+    display: block;
+    padding-bottom: 1rem;
+  }
+  .hsearch__done .btn {
+    width: 100%;
   }
   .services {
     padding-top: var(--space-4);
@@ -1154,12 +1690,9 @@
     width: var(--tap);
     padding: 0;
   }
-  .scale__buttons button {
-    min-height: 44px;
-    font-size: var(--step--1);
-  }
   .result__head,
-  .result__body {
+  .result__body,
+  .result__disclaimer {
     padding-inline: 1.25rem;
   }
 }
@@ -1174,15 +1707,35 @@
   .result__head .btn {
     width: 100%;
   }
-  .filters {
-    display: grid;
+  .hsearch {
+    padding-inline: 1rem;
+  }
+  .hsearch__row {
     grid-template-columns: 1fr;
   }
-  .filters select {
+  .hsearch__label {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5em;
+  }
+  .hsearch__btns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
     width: 100%;
   }
-  .filters__radius span {
-    padding: 0 0.8rem;
+  .optset > label > span {
+    --pad: 0.8rem;
+  }
+  /* 좁은 화면: 번호 들여쓰기를 없애고 전화 버튼을 넓게 */
+  .hcard {
+    padding-inline: 1rem;
+  }
+  .hcard__week,
+  .hcard__acts {
+    margin-left: 0;
+  }
+  .hcard__acts .btn {
+    flex: 1 1 100%;
   }
   .emergency {
     grid-template-columns: 1fr;
@@ -1190,11 +1743,24 @@
   .emergency__icon {
     grid-row: auto;
   }
-  .guide__table {
+  .leaflet__lede,
+  .leaflet__row {
     grid-template-columns: 1fr;
-    gap: 0.2rem;
   }
-  .guide__table dd {
-    margin-bottom: 0.6rem;
+  .leaflet__lede h3 {
+    margin-bottom: 0.35rem;
+  }
+  .leaflet__lede p {
+    padding-left: 0.8rem;
+  }
+  .leaflet__label {
+    padding: var(--space-2) 0 0;
+  }
+  .leaflet__body {
+    margin-top: 0.5rem;
+    padding: 0 0 var(--space-2) 0.8rem;
+  }
+  .guides__foot .btn {
+    width: 100%;
   }
 }
