@@ -147,39 +147,18 @@
 | --- | --- | --- |
 | v1 | 틀·디자인, 목업 데이터로 3개 흐름 동작 | 완료 |
 | v1.1 | 백엔드 API 계약(Notion) 반영: envelope·상태별 문진·새 DTO, 목업을 새 계약 형태로 교체 | 완료 |
-| v1.2 | 실제 백엔드 연결 확인, **목업 제거**(10장), 지도 키 적용, CLOVA Voice 적용 | 예정 |
+| v1.2 | 실제 백엔드 연결 확인, **목업 제거**(10장), 지도 키 적용, CLOVA Voice 적용 | 완료 |
 | v1.3 | 새 Swagger 명세 반영(문진 DTO 단순화, 복약 안내 API 통합) | 완료 |
 | v1.4 | Notion API 명세 v1 반영(업로드 제한·문진 종료 코드·최대 5번), 실서버 검증, 문 연 병원 개편(진료 중 + 진료 시간 아님, 진료 시간 막대, 지도 범례) | 완료 |
 | v1.5 | API 명세 v1.1 반영(최대 7번, 복수 진료과 한 번 요청·`departments`·진료 중 먼저 정렬, 서버 음성 재생) | 완료 |
 | v2 | 남은 TBD 반영(인증, 공휴일 진료 시간 등) | 예정 |
 | v3 | 음성 증상 입력(CLOVA Speech), 다국어(Papago), 복약 알림 | 계획 |
 
-## 10. 목업 데이터 (임시)
+## 10. 임시 성격인 것
 
-백엔드 연동 전 화면 개발용이다. **실제 서비스에 넣지 않는다.**
-병원·약·질환 정보는 "(예시)", "(목업)"을 붙인 지어낸 값이며 실제 의료 정보가 아니다.
-응답 모양은 `src/api/types.ts`(백엔드 계약)를 그대로 따르므로, 목업에서 동작하면 실제 백엔드에서도 같은 화면 흐름이 나와야 한다.
+백엔드 연동 전 화면 개발용 목업(`src/api/mock.ts`, `VITE_USE_MOCK`)은 실서버 연결을 확인한 뒤 2026-11-25에 제거했다. 이제 화면은 항상 백엔드에 요청하므로, 서버가 꺼져 있으면 화면을 확인할 수 없다(필요하면 git 기록에서 되살린다).
 
-### 10-1. 목업이 있는 곳
-
-| 위치 | 내용 |
-| --- | --- |
-| `src/api/mock.ts` | 목업 본체. 고정 질문 4개, 목업 전용 응급 키워드, 분석 3초 대기(ANALYZING), 결과, 병원 5곳, 복약 안내 카드·미확인 약 |
-| `src/api/client.ts` | `USE_MOCK` 상수, `sleep` (목업 전용) |
-| `src/api/index.ts` | 각 API 함수 첫 줄의 `if (USE_MOCK) return mock.…` 5곳, `import * as mock` |
-| `.env.local`, `.env.example` | `VITE_USE_MOCK` 항목 |
-| `src/vite-env.d.ts` | `VITE_USE_MOCK` 타입 선언 |
-| `README.md` | 환경변수 표의 `VITE_USE_MOCK` 행 |
-
-### 10-2. 제거 절차
-
-1. `src/api/mock.ts` 삭제.
-2. `src/api/index.ts`에서 `import * as mock from './mock'`, `USE_MOCK` import, 각 함수의 `if (USE_MOCK) …` 줄 5개 삭제.
-3. `src/api/client.ts`에서 `USE_MOCK` 상수와 `sleep` 삭제.
-4. `.env.local`, `.env.example`, `src/vite-env.d.ts`, `README.md`에서 `VITE_USE_MOCK` 삭제.
-5. `npm run build`로 타입 오류가 없는지 확인한 뒤, `grep -rni "mock" src` 결과가 비어 있는지 확인.
-
-### 10-3. 목업은 아니지만 임시 성격인 것 (제거 시 같이 검토)
+아래는 목업은 아니지만 임시 성격이라 계약이 확정되면 다시 볼 것이다.
 
 | 위치 | 내용 | 판단 |
 | --- | --- | --- |

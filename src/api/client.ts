@@ -6,7 +6,6 @@ const BASE = `${ORIGIN}/api/v1`;
 
 /** 서버가 돌려준 경로(예: 약 안내 음성 audio_url "/api/v1/medications/audio/…")를 요청할 수 있는 주소로 바꾼다 */
 export const serverUrl = (path: string) => (/^https?:\/\//.test(path) ? path : `${ORIGIN}${path}`);
-export const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true';
 
 /** 응답 code 로 분기한다. message 는 사용자에게 보여 주는 용도로만 쓴다. */
 export class ApiError extends Error {
@@ -74,5 +73,3 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
 
   return body.data as T;
 }
-
-export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
